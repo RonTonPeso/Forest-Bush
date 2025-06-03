@@ -4,7 +4,7 @@ provider "fly" {
 
 resource "fly_app" "forest_bush" {
   name = "forest-bush"
-  org  = "personal"
+  org  = "wronnie"
 }
 
 resource "null_resource" "flyctl_setup" {
