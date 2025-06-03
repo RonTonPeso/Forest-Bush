@@ -13,11 +13,15 @@ fi
 
 # Check if FLY_API_TOKEN is set
 if [ -z "$TF_VAR_fly_api_token" ]; then
-    echo "Error: FLY_API_TOKEN environment variable is not set"
-    echo "Please set it using: export FLY_API_TOKEN=your_token_here"
+    echo "Error: TF_VAR_fly_api_token environment variable is not set"
+    echo "Please set it using: export TF_VAR_fly_api_token=your_token_here"
     exit 1
 fi
 
-# Authenticate using the tokens
+# Authenticate using the token
 echo "Authenticating with Fly.io..."
-echo "$TF_VAR_fly_api_token" | flyctl auth token 
+echo "$TF_VAR_fly_api_token" | flyctl auth token
+
+# List available organizations
+echo "Available organizations:"
+flyctl orgs list 
