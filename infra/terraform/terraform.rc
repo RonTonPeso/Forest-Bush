@@ -1,0 +1,4 @@
+workspaces {
+  name = "forest-bush"
+  working_directory = "/infra/terraform"
+} 
