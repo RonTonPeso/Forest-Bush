@@ -1,4 +1,5 @@
 provider "fly" {
+  # This token is used by the Terraform provider to manage Fly.io resources
   fly_api_token = var.fly_api_token
 }
 
@@ -45,19 +46,37 @@ resource "null_resource" "app_secrets" {
       echo "Made flyctl executable: $FLYCTL_BIN"
       ls -l "$FLYCTL_BIN"
       
-      # Set up authentication
+      # Set up authentication for flyctl CLI
+      # We reuse the Terraform provider token (var.fly_api_token) as FLY_API_TOKEN
+      # This is the same token, just used in different contexts:
+      # - As var.fly_api_token for Terraform's fly provider
+      # - As FLY_API_TOKEN for flyctl CLI commands
+      if [ -z "${var.fly_api_token}" ]; then
+        echo "Error: fly_api_token is not set"
+        exit 1
+      fi
       export FLY_API_TOKEN="${var.fly_api_token}"
       
       echo "Authenticating with Fly.io..."
       "$FLYCTL_BIN" auth token "$FLY_API_TOKEN"
       
       echo "Verifying authentication..."
-      "$FLYCTL_BIN" auth whoami
+      if ! "$FLYCTL_BIN" auth whoami; then
+        echo "Error: Failed to authenticate with Fly.io"
+        exit 1
+      fi
       
       # Set the secrets
       echo "Setting secrets..."
-      "$FLYCTL_BIN" secrets set DATABASE_URL='${var.db_url}' --app ${fly_app.forest_bush.name}
-      "$FLYCTL_BIN" secrets set REDIS_URL='${var.redis_url}' --app ${fly_app.forest_bush.name}
+      if ! "$FLYCTL_BIN" secrets set DATABASE_URL='${var.db_url}' --app ${fly_app.forest_bush.name}; then
+        echo "Error: Failed to set DATABASE_URL secret"
+        exit 1
+      fi
+      
+      if ! "$FLYCTL_BIN" secrets set REDIS_URL='${var.redis_url}' --app ${fly_app.forest_bush.name}; then
+        echo "Error: Failed to set REDIS_URL secret"
+        exit 1
+      fi
       
       echo "===== SETUP AND SECRETS END ====="
     EOT
