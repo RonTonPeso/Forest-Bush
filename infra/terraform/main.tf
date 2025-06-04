@@ -20,28 +20,28 @@ resource "null_resource" "app_secrets" {
 
   provisioner "local-exec" {
     command = <<-EOT
-      echo "Current PATH: $PATH"
       echo "Current directory: $(pwd)"
-      echo "Home directory: $HOME"
       
-      # Try to find flyctl
-      echo "Searching for flyctl..."
-      find $HOME -name flyctl 2>/dev/null || echo "Not found in HOME"
-      find /usr/local -name flyctl 2>/dev/null || echo "Not found in /usr/local"
+      # Get the flyctl path from the file
+      FLYCTL_PATH_FILE="$(pwd)/flyctl_path.txt"
+      if [ ! -f "$FLYCTL_PATH_FILE" ]; then
+        echo "Error: flyctl path file not found at $FLYCTL_PATH_FILE"
+        exit 1
+      fi
       
-      # Set up PATH to include common flyctl locations
-      export PATH="$HOME/.fly/bin:$PATH"
-      export PATH="/usr/local/bin:$PATH"
-      export PATH="$HOME/bin:$PATH"
+      FLYCTL_BIN=$(cat "$FLYCTL_PATH_FILE")
+      echo "Using flyctl from: $FLYCTL_BIN"
       
-      # Try to run flyctl version
-      echo "Trying flyctl version..."
-      flyctl version || echo "flyctl version failed"
+      if [ ! -x "$FLYCTL_BIN" ]; then
+        echo "Error: flyctl binary not executable at $FLYCTL_BIN"
+        ls -l "$FLYCTL_BIN"
+        chmod +x "$FLYCTL_BIN"
+      fi
       
-      # Set the secrets
+      # Set the secrets using the full path to flyctl
       echo "Setting secrets..."
-      flyctl secrets set DATABASE_URL='${var.db_url}' --app ${fly_app.forest_bush.name}
-      flyctl secrets set REDIS_URL='${var.redis_url}' --app ${fly_app.forest_bush.name}
+      "$FLYCTL_BIN" secrets set DATABASE_URL='${var.db_url}' --app ${fly_app.forest_bush.name}
+      "$FLYCTL_BIN" secrets set REDIS_URL='${var.redis_url}' --app ${fly_app.forest_bush.name}
     EOT
   }
 
