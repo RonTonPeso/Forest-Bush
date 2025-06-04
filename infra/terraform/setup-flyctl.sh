@@ -5,9 +5,28 @@ set -e
 if ! command -v flyctl &> /dev/null; then
     echo "Installing flyctl..."
     curl -L https://fly.io/install.sh | sh
-    
-    # Add flyctl to PATH for the current session
-    export FLYCTL_INSTALL="/usr/local/lib/flyctl"
+
+    # Detect install location (Linux vs Mac vs Terraform Cloud)
+    if [ -d "$HOME/.fly" ]; then
+        export FLYCTL_INSTALL="$HOME/.fly"
+    elif [ -d "/usr/local/lib/flyctl" ]; then
+        export FLYCTL_INSTALL="/usr/local/lib/flyctl"
+    else
+        # Fallback for Terraform Cloud ephemeral home
+        export FLYCTL_INSTALL="$(find $HOME -type d -name '.fly' | head -n 1)"
+    fi
+    export PATH="$FLYCTL_INSTALL/bin:$PATH"
+fi
+
+# If flyctl still isn't found, try to set PATH again (for already-installed case)
+if ! command -v flyctl &> /dev/null; then
+    if [ -d "$HOME/.fly" ]; then
+        export FLYCTL_INSTALL="$HOME/.fly"
+    elif [ -d "/usr/local/lib/flyctl" ]; then
+        export FLYCTL_INSTALL="/usr/local/lib/flyctl"
+    else
+        export FLYCTL_INSTALL="$(find $HOME -type d -name '.fly' | head -n 1)"
+    fi
     export PATH="$FLYCTL_INSTALL/bin:$PATH"
 fi
 
@@ -23,7 +42,7 @@ export FLY_API_TOKEN="$TF_VAR_fly_api_token"
 
 # Authenticate using the token
 echo "Authenticating with Fly.io..."
-echo "$FLY_API_TOKEN" | flyctl auth token
+flyctl auth token "$FLY_API_TOKEN"
 
 # Verify authentication
 echo "Verifying authentication..."
