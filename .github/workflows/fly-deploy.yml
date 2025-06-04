@@ -3,7 +3,7 @@ name: Fly Deploy
 on:
   push:
     branches:
-      - main 
+      - main
 
 jobs:
   deploy:
@@ -13,10 +13,9 @@ jobs:
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}
       cancel-in-progress: true
-    environment: production 
     defaults:
       run:
-        working-directory: ./api # Set default working directory
+        working-directory: ./api
 
     steps:
       - name: Checkout code
