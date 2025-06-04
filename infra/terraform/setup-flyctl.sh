@@ -1,12 +1,15 @@
 #!/bin/bash
 set -e
 
-echo "Starting setup-flyctl.sh"
+echo "===== SETUP FLYCTL SCRIPT START ====="
 echo "Current PATH: $PATH"
 echo "Current directory: $(pwd)"
+echo "Script location: $0"
+echo "Home directory: $HOME"
 
-# Create a file to store the flyctl path
-FLYCTL_PATH_FILE="$(pwd)/flyctl_path.txt"
+# Create a file to store the flyctl path in a location we know exists
+FLYCTL_PATH_FILE="/tmp/flyctl_path.txt"
+echo "Will store flyctl path in: $FLYCTL_PATH_FILE"
 
 # Check if flyctl is already installed
 if ! command -v flyctl &> /dev/null; then
@@ -44,12 +47,16 @@ if ! command -v flyctl &> /dev/null; then
 fi
 
 # Record the flyctl location
+echo "Searching for flyctl binary..."
 FLYCTL_BIN=$(command -v flyctl || find $HOME -name flyctl -type f | head -n 1)
 if [ -n "$FLYCTL_BIN" ]; then
     echo "Found flyctl at: $FLYCTL_BIN"
     echo "$FLYCTL_BIN" > "$FLYCTL_PATH_FILE"
     chmod +x "$FLYCTL_BIN"
     echo "Recorded flyctl path to $FLYCTL_PATH_FILE"
+    echo "Contents of $FLYCTL_PATH_FILE:"
+    cat "$FLYCTL_PATH_FILE"
+    ls -l "$FLYCTL_PATH_FILE"
 else
     echo "Error: Could not find flyctl binary"
     exit 1
@@ -77,4 +84,4 @@ echo "Verifying authentication..."
 echo "Available organizations:"
 "$FLYCTL_BIN" orgs list
 
-echo "setup-flyctl.sh completed successfully" 
+echo "===== SETUP FLYCTL SCRIPT END =====" 
