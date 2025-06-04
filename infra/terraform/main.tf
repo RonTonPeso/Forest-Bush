@@ -20,17 +20,23 @@ resource "null_resource" "app_secrets" {
 
   provisioner "local-exec" {
     command = <<-EOT
-      # Find flyctl install location
-      if [ -d "$HOME/.fly" ]; then
-        export FLYCTL_INSTALL="$HOME/.fly"
-      elif [ -d "/usr/local/lib/flyctl" ]; then
-        export FLYCTL_INSTALL="/usr/local/lib/flyctl"
-      else
-        export FLYCTL_INSTALL="$(find $HOME -type d -name '.fly' | head -n 1)"
-      fi
-      export PATH="$FLYCTL_INSTALL/bin:$PATH"
-      flyctl secrets set DATABASE_URL='${var.db_url}' --app ${fly_app.forest_bush.name}
-      flyctl secrets set REDIS_URL='${var.redis_url}' --app ${fly_app.forest_bush.name}
+      echo "HOME is: $HOME"
+      echo "PATH is: $PATH"
+      echo "Listing $HOME:"
+      ls -al $HOME
+      echo "Searching for flyctl in $HOME:"
+      find $HOME -name flyctl
+      echo "Searching for flyctl in /usr/local/lib:"
+      find /usr/local/lib -name flyctl 2>/dev/null || true
+      echo "Which flyctl:"
+      which flyctl || true
+      echo "Command -v flyctl:"
+      command -v flyctl || true
+      echo "Trying to run flyctl version:"
+      flyctl version || true
+      # Now try the secrets commands
+      flyctl secrets set DATABASE_URL='${var.db_url}' --app ${fly_app.forest_bush.name} || true
+      flyctl secrets set REDIS_URL='${var.redis_url}' --app ${fly_app.forest_bush.name} || true
     EOT
   }
 
