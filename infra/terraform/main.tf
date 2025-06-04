@@ -23,22 +23,25 @@ resource "null_resource" "app_secrets" {
     command = <<-EOT
       echo "===== APP SECRETS PROVISIONER START ====="
       echo "Current directory: $(pwd)"
-      echo "Home directory: $HOME"
       
-      # Get the flyctl path from the file
+      # Get the flyctl path from the workspace
       WORKSPACE_DIR="$(pwd)"
       FLYCTL_PATH_FILE="$WORKSPACE_DIR/.flyctl_path"
-      echo "Looking for flyctl path in: $FLYCTL_PATH_FILE"
-      echo "Contents of workspace directory:"
-      ls -la "$WORKSPACE_DIR"
       
       if [ ! -f "$FLYCTL_PATH_FILE" ]; then
         echo "Error: flyctl path file not found at $FLYCTL_PATH_FILE"
+        echo "Contents of workspace:"
+        ls -la "$WORKSPACE_DIR"
         exit 1
       fi
       
       FLYCTL_BIN=$(cat "$FLYCTL_PATH_FILE")
       echo "Using flyctl from: $FLYCTL_BIN"
+      
+      if [ ! -f "$FLYCTL_BIN" ]; then
+        echo "Error: flyctl binary not found at $FLYCTL_BIN"
+        exit 1
+      fi
       
       if [ ! -x "$FLYCTL_BIN" ]; then
         echo "Error: flyctl binary not executable at $FLYCTL_BIN"
