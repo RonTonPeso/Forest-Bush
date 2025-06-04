@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e
 
+echo "Starting setup-flyctl.sh"
+echo "Current PATH: $PATH"
+echo "Current directory: $(pwd)"
+
 # Check if flyctl is already installed
 if ! command -v flyctl &> /dev/null; then
     echo "Installing flyctl..."
@@ -9,17 +13,22 @@ if ! command -v flyctl &> /dev/null; then
     # Detect install location (Linux vs Mac vs Terraform Cloud)
     if [ -d "$HOME/.fly" ]; then
         export FLYCTL_INSTALL="$HOME/.fly"
+        echo "Found flyctl in $HOME/.fly"
     elif [ -d "/usr/local/lib/flyctl" ]; then
         export FLYCTL_INSTALL="/usr/local/lib/flyctl"
+        echo "Found flyctl in /usr/local/lib/flyctl"
     else
         # Fallback for Terraform Cloud ephemeral home
         export FLYCTL_INSTALL="$(find $HOME -type d -name '.fly' | head -n 1)"
+        echo "Found flyctl in $FLYCTL_INSTALL"
     fi
     export PATH="$FLYCTL_INSTALL/bin:$PATH"
+    echo "Updated PATH: $PATH"
 fi
 
 # If flyctl still isn't found, try to set PATH again (for already-installed case)
 if ! command -v flyctl &> /dev/null; then
+    echo "flyctl not found after install, trying to locate it..."
     if [ -d "$HOME/.fly" ]; then
         export FLYCTL_INSTALL="$HOME/.fly"
     elif [ -d "/usr/local/lib/flyctl" ]; then
@@ -28,6 +37,7 @@ if ! command -v flyctl &> /dev/null; then
         export FLYCTL_INSTALL="$(find $HOME -type d -name '.fly' | head -n 1)"
     fi
     export PATH="$FLYCTL_INSTALL/bin:$PATH"
+    echo "Updated PATH again: $PATH"
 fi
 
 # Check if TF_VAR_fly_api_token is set
@@ -50,4 +60,6 @@ flyctl auth whoami
 
 # List available organizations
 echo "Available organizations:"
-flyctl orgs list 
+flyctl orgs list
+
+echo "setup-flyctl.sh completed successfully" 
