@@ -20,6 +20,26 @@ resource "null_resource" "app_secrets" {
 
   provisioner "local-exec" {
     command = <<-EOT
+      echo "Current PATH: $PATH"
+      echo "Current directory: $(pwd)"
+      echo "Home directory: $HOME"
+      
+      # Try to find flyctl
+      echo "Searching for flyctl..."
+      find $HOME -name flyctl 2>/dev/null || echo "Not found in HOME"
+      find /usr/local -name flyctl 2>/dev/null || echo "Not found in /usr/local"
+      
+      # Set up PATH to include common flyctl locations
+      export PATH="$HOME/.fly/bin:$PATH"
+      export PATH="/usr/local/bin:$PATH"
+      export PATH="$HOME/bin:$PATH"
+      
+      # Try to run flyctl version
+      echo "Trying flyctl version..."
+      flyctl version || echo "flyctl version failed"
+      
+      # Set the secrets
+      echo "Setting secrets..."
       flyctl secrets set DATABASE_URL='${var.db_url}' --app ${fly_app.forest_bush.name}
       flyctl secrets set REDIS_URL='${var.redis_url}' --app ${fly_app.forest_bush.name}
     EOT
