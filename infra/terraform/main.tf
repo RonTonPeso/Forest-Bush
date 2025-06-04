@@ -25,13 +25,14 @@ resource "null_resource" "app_secrets" {
       echo "Home directory: $HOME"
       
       # Get the flyctl path from the file
-      FLYCTL_PATH_FILE="/tmp/flyctl_path.txt"
+      WORKSPACE_DIR="$(pwd)"
+      FLYCTL_PATH_FILE="${WORKSPACE_DIR}/.flyctl_path"
       echo "Looking for flyctl path in: $FLYCTL_PATH_FILE"
+      echo "Contents of workspace directory:"
+      ls -la "$WORKSPACE_DIR"
       
       if [ ! -f "$FLYCTL_PATH_FILE" ]; then
         echo "Error: flyctl path file not found at $FLYCTL_PATH_FILE"
-        echo "Contents of /tmp:"
-        ls -la /tmp
         exit 1
       fi
       

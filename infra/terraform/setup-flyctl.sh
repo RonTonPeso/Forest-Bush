@@ -7,9 +7,12 @@ echo "Current directory: $(pwd)"
 echo "Script location: $0"
 echo "Home directory: $HOME"
 
-# Create a file to store the flyctl path in a location we know exists
-FLYCTL_PATH_FILE="/tmp/flyctl_path.txt"
+# Store flyctl path in the workspace directory
+WORKSPACE_DIR="$(pwd)"
+FLYCTL_PATH_FILE="${WORKSPACE_DIR}/.flyctl_path"
 echo "Will store flyctl path in: $FLYCTL_PATH_FILE"
+touch "$FLYCTL_PATH_FILE"
+chmod 755 "$FLYCTL_PATH_FILE"
 
 # Check if flyctl is already installed
 if ! command -v flyctl &> /dev/null; then
@@ -57,6 +60,8 @@ if [ -n "$FLYCTL_BIN" ]; then
     echo "Contents of $FLYCTL_PATH_FILE:"
     cat "$FLYCTL_PATH_FILE"
     ls -l "$FLYCTL_PATH_FILE"
+    echo "Contents of workspace directory:"
+    ls -la "$WORKSPACE_DIR"
 else
     echo "Error: Could not find flyctl binary"
     exit 1
