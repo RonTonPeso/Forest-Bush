@@ -20,12 +20,18 @@ resource "null_resource" "app_secrets" {
 
   provisioner "local-exec" {
     command = <<-EOT
+      echo "===== APP SECRETS PROVISIONER START ====="
       echo "Current directory: $(pwd)"
+      echo "Home directory: $HOME"
       
       # Get the flyctl path from the file
-      FLYCTL_PATH_FILE="$(pwd)/flyctl_path.txt"
+      FLYCTL_PATH_FILE="/tmp/flyctl_path.txt"
+      echo "Looking for flyctl path in: $FLYCTL_PATH_FILE"
+      
       if [ ! -f "$FLYCTL_PATH_FILE" ]; then
         echo "Error: flyctl path file not found at $FLYCTL_PATH_FILE"
+        echo "Contents of /tmp:"
+        ls -la /tmp
         exit 1
       fi
       
@@ -42,6 +48,8 @@ resource "null_resource" "app_secrets" {
       echo "Setting secrets..."
       "$FLYCTL_BIN" secrets set DATABASE_URL='${var.db_url}' --app ${fly_app.forest_bush.name}
       "$FLYCTL_BIN" secrets set REDIS_URL='${var.redis_url}' --app ${fly_app.forest_bush.name}
+      
+      echo "===== APP SECRETS PROVISIONER END ====="
     EOT
   }
 
