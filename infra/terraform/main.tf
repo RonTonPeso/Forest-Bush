@@ -7,54 +7,59 @@ resource "fly_app" "forest_bush" {
   org  = "personal"
 }
 
-resource "null_resource" "flyctl_setup" {
-  depends_on = [fly_app.forest_bush]
-
-  provisioner "local-exec" {
-    command = "${path.module}/setup-flyctl.sh"
-  }
-}
-
 resource "null_resource" "app_secrets" {
-  depends_on = [fly_app.forest_bush, null_resource.flyctl_setup]
+  depends_on = [fly_app.forest_bush]
 
   provisioner "local-exec" {
     interpreter = ["/bin/bash", "-c"]
     command = <<-EOT
-      echo "===== APP SECRETS PROVISIONER START ====="
+      echo "===== SETUP AND SECRETS START ====="
       echo "Current directory: $(pwd)"
       
-      # Get the flyctl path from the workspace
+      # Create a directory for our binaries
       WORKSPACE_DIR="$(pwd)"
-      FLYCTL_PATH_FILE="$WORKSPACE_DIR/.flyctl_path"
+      BIN_DIR="$WORKSPACE_DIR/bin"
+      mkdir -p "$BIN_DIR"
+      chmod 755 "$BIN_DIR"
       
-      if [ ! -f "$FLYCTL_PATH_FILE" ]; then
-        echo "Error: flyctl path file not found at $FLYCTL_PATH_FILE"
-        echo "Contents of workspace:"
-        ls -la "$WORKSPACE_DIR"
-        exit 1
-      fi
+      echo "Created bin directory: $BIN_DIR"
+      ls -la "$BIN_DIR"
       
-      FLYCTL_BIN=$(cat "$FLYCTL_PATH_FILE")
-      echo "Using flyctl from: $FLYCTL_BIN"
+      # Install flyctl directly to our bin directory
+      echo "Installing flyctl..."
+      curl -L https://fly.io/install.sh | FLYCTL_INSTALL="$BIN_DIR" sh
       
+      # Find the flyctl binary
+      FLYCTL_BIN="$BIN_DIR/bin/flyctl"
       if [ ! -f "$FLYCTL_BIN" ]; then
-        echo "Error: flyctl binary not found at $FLYCTL_BIN"
+        echo "Error: flyctl binary not found at expected location: $FLYCTL_BIN"
+        echo "Contents of $BIN_DIR:"
+        ls -la "$BIN_DIR"
+        echo "Contents of $BIN_DIR/bin (if exists):"
+        ls -la "$BIN_DIR/bin" || echo "bin subdirectory does not exist"
         exit 1
       fi
       
-      if [ ! -x "$FLYCTL_BIN" ]; then
-        echo "Error: flyctl binary not executable at $FLYCTL_BIN"
-        ls -l "$FLYCTL_BIN"
-        chmod +x "$FLYCTL_BIN"
-      fi
+      # Make the binary executable
+      chmod +x "$FLYCTL_BIN"
+      echo "Made flyctl executable: $FLYCTL_BIN"
+      ls -l "$FLYCTL_BIN"
       
-      # Set the secrets using the full path to flyctl
+      # Set up authentication
+      export FLY_API_TOKEN="${var.fly_api_token}"
+      
+      echo "Authenticating with Fly.io..."
+      "$FLYCTL_BIN" auth token "$FLY_API_TOKEN"
+      
+      echo "Verifying authentication..."
+      "$FLYCTL_BIN" auth whoami
+      
+      # Set the secrets
       echo "Setting secrets..."
       "$FLYCTL_BIN" secrets set DATABASE_URL='${var.db_url}' --app ${fly_app.forest_bush.name}
       "$FLYCTL_BIN" secrets set REDIS_URL='${var.redis_url}' --app ${fly_app.forest_bush.name}
       
-      echo "===== APP SECRETS PROVISIONER END ====="
+      echo "===== SETUP AND SECRETS END ====="
     EOT
   }
 
