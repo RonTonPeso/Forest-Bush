@@ -5,6 +5,9 @@ echo "Starting setup-flyctl.sh"
 echo "Current PATH: $PATH"
 echo "Current directory: $(pwd)"
 
+# Create a file to store the flyctl path
+FLYCTL_PATH_FILE="$(pwd)/flyctl_path.txt"
+
 # Check if flyctl is already installed
 if ! command -v flyctl &> /dev/null; then
     echo "Installing flyctl..."
@@ -40,6 +43,18 @@ if ! command -v flyctl &> /dev/null; then
     echo "Updated PATH again: $PATH"
 fi
 
+# Record the flyctl location
+FLYCTL_BIN=$(command -v flyctl || find $HOME -name flyctl -type f | head -n 1)
+if [ -n "$FLYCTL_BIN" ]; then
+    echo "Found flyctl at: $FLYCTL_BIN"
+    echo "$FLYCTL_BIN" > "$FLYCTL_PATH_FILE"
+    chmod +x "$FLYCTL_BIN"
+    echo "Recorded flyctl path to $FLYCTL_PATH_FILE"
+else
+    echo "Error: Could not find flyctl binary"
+    exit 1
+fi
+
 # Check if TF_VAR_fly_api_token is set
 if [ -z "$TF_VAR_fly_api_token" ]; then
     echo "Error: TF_VAR_fly_api_token environment variable is not set"
@@ -52,14 +67,14 @@ export FLY_API_TOKEN="$TF_VAR_fly_api_token"
 
 # Authenticate using the token
 echo "Authenticating with Fly.io..."
-flyctl auth token "$FLY_API_TOKEN"
+"$FLYCTL_BIN" auth token "$FLY_API_TOKEN"
 
 # Verify authentication
 echo "Verifying authentication..."
-flyctl auth whoami
+"$FLYCTL_BIN" auth whoami
 
 # List available organizations
 echo "Available organizations:"
-flyctl orgs list
+"$FLYCTL_BIN" orgs list
 
 echo "setup-flyctl.sh completed successfully" 
