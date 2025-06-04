@@ -20,8 +20,9 @@ resource "null_resource" "app_secrets" {
 
   provisioner "local-exec" {
     command = <<-EOT
-      flyctl secrets set DATABASE_URL='${var.db_url}' --app ${fly_app.forest_bush.name}
-      flyctl secrets set REDIS_URL='${var.redis_url}' --app ${fly_app.forest_bush.name}
+      FLYCTL_PATH="$(command -v flyctl)"
+      "$FLYCTL_PATH" secrets set DATABASE_URL='${var.db_url}' --app ${fly_app.forest_bush.name}
+      "$FLYCTL_PATH" secrets set REDIS_URL='${var.redis_url}' --app ${fly_app.forest_bush.name}
     EOT
   }
 
