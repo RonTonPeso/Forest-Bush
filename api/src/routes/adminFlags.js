@@ -42,4 +42,19 @@ router.post('/', apiKeyAuth, async (req, res) => {
   }
 });
 
+// GET /admin/flags - Get a list of all feature flags
+router.get('/', apiKeyAuth, async (req, res) => {
+  try {
+    const flags = await prisma.featureFlag.findMany({
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+    res.status(200).json(flags);
+  } catch (error) {
+    console.error('Error fetching feature flags:', error);
+    res.status(500).json({ message: 'error fetching feature flags' });
+  }
+});
+
 module.exports = router; 
