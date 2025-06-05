@@ -9,4 +9,10 @@ const createFlagSchema = z.object({
   // rules: z.record(z.any()).optional(), // placeholder for more complex rules later
 });
 
-module.exports = { createFlagSchema }; 
+const updateFlagSchema = z.object({
+  description: z.string().max(255).optional(),
+  enabled: z.boolean().optional(),
+  // rules: z.record(z.any()).optional(), // placeholder for more complex rules later
+});
+
+module.exports = { createFlagSchema, updateFlagSchema }; 

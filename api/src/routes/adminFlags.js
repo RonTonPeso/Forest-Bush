@@ -1,7 +1,7 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { apiKeyAuth } = require('../middleware/auth');
-const { createFlagSchema } = require('../schemas/flagSchemas');
+const { createFlagSchema, updateFlagSchema } = require('../schemas/flagSchemas');
 
 const prisma = new PrismaClient();
 const router = express.Router();
@@ -74,6 +74,39 @@ router.get('/:key', apiKeyAuth, async (req, res) => {
   } catch (error) {
     console.error(`Error fetching feature flag with key ${key}:`, error);
     res.status(500).json({ message: 'error fetching feature flag' });
+  }
+});
+
+// PUT /admin/flags/:key - Update a feature flag
+router.put('/:key', apiKeyAuth, async (req, res) => {
+  const { key } = req.params;
+
+  const validationResult = updateFlagSchema.safeParse(req.body);
+
+  if (!validationResult.success) {
+    return res.status(400).json({ 
+      message: 'validation failed', 
+      errors: validationResult.error.format() 
+    });
+  }
+
+  // check if there's at least one field to update
+  if (Object.keys(validationResult.data).length === 0) {
+    return res.status(400).json({ message: 'no fields to update provided' });
+  }
+
+  try {
+    const updatedFlag = await prisma.featureFlag.update({
+      where: { key },
+      data: validationResult.data,
+    });
+    res.status(200).json(updatedFlag);
+  } catch (error) {
+    if (error.code === 'P2025') { // record to update not found
+      return res.status(404).json({ message: `flag with key '${key}' not found.` });
+    }
+    console.error(`Error updating feature flag with key ${key}:`, error);
+    res.status(500).json({ message: 'error updating feature flag' });
   }
 });
 
