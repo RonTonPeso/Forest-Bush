@@ -9,6 +9,9 @@ COPY package*.json ./
 # this ensures prisma generate can find the schema
 COPY prisma ./prisma/ 
 
+# set prisma engine type before install and generate
+ENV PRISMA_CLIENT_ENGINE_TYPE="binary"
+
 # install all dependencies (including prisma cli for generation)
 RUN npm install 
 
