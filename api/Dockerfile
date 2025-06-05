@@ -19,7 +19,7 @@ RUN npm install
 RUN npx prisma generate
 
 # remove dev dependencies for a smaller image (optional, but good practice)
-# RUN npm prune --production # temporarily removed for debugging
+RUN npm prune --production
 
 # copy the rest of your application code
 # this will copy src/, etc. and overwrite the prisma folder but that's fine
