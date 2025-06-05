@@ -110,4 +110,22 @@ router.put('/:key', apiKeyAuth, async (req, res) => {
   }
 });
 
+// DELETE /admin/flags/:key - Delete a feature flag
+router.delete('/:key', apiKeyAuth, async (req, res) => {
+  const { key } = req.params;
+
+  try {
+    await prisma.featureFlag.delete({
+      where: { key },
+    });
+    res.status(204).send(); // 204 no content is standard for a successful delete
+  } catch (error) {
+    if (error.code === 'P2025') { // record to delete not found
+      return res.status(404).json({ message: `flag with key '${key}' not found.` });
+    }
+    console.error(`Error deleting feature flag with key ${key}:`, error);
+    res.status(500).json({ message: 'error deleting feature flag' });
+  }
+});
+
 module.exports = router; 
