@@ -6,12 +6,18 @@ const createFlagSchema = z.object({
   }),
   description: z.string().max(255).optional(),
   enabled: z.boolean().default(false),
+  rules: z.object({
+    rolloutPercentage: z.number().min(0).max(100).optional(),
+  }).optional(),
   // rules: z.record(z.any()).optional(), // placeholder for more complex rules later
 });
 
 const updateFlagSchema = z.object({
   description: z.string().max(255).optional(),
   enabled: z.boolean().optional(),
+  rules: z.object({
+    rolloutPercentage: z.number().min(0).max(100).optional(),
+  }).nullable().optional(), // allow setting rules to null to clear them
   // rules: z.record(z.any()).optional(), // placeholder for more complex rules later
 });
 

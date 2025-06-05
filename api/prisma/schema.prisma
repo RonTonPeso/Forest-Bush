@@ -18,7 +18,12 @@ model FeatureFlag {
   key         String   @unique
   description String?
   enabled     Boolean  @default(false)
-  rules       Json?    // Optional JSON field for complex rules
+
+  // Rules for dynamic evaluation.
+  // Example for percentage rollout: { "rolloutPercentage": 50 }
+  // Example for user IDs: { "userIds": ["user1", "user2"] }
+  rules       Json?
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }

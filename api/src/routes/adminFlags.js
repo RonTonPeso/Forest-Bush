@@ -20,7 +20,7 @@ router.post('/', apiKeyAuth, async (req, res) => {
     });
   }
 
-  const { key, description, enabled } = validationResult.data;
+  const { key, description, enabled, rules } = validationResult.data;
 
   try {
     const newFlag = await prisma.featureFlag.create({
@@ -28,7 +28,7 @@ router.post('/', apiKeyAuth, async (req, res) => {
         key,
         description,
         enabled,
-        // rules: {} // default to empty json object if rules are to be non-null in db
+        rules: rules || {},
       },
     });
     res.status(201).json(newFlag);
