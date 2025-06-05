@@ -57,4 +57,24 @@ router.get('/', apiKeyAuth, async (req, res) => {
   }
 });
 
+// GET /admin/flags/:key - Get a single feature flag by key
+router.get('/:key', apiKeyAuth, async (req, res) => {
+  const { key } = req.params;
+
+  try {
+    const flag = await prisma.featureFlag.findUnique({
+      where: { key },
+    });
+
+    if (!flag) {
+      return res.status(404).json({ message: `flag with key '${key}' not found.` });
+    }
+
+    res.status(200).json(flag);
+  } catch (error) {
+    console.error(`Error fetching feature flag with key ${key}:`, error);
+    res.status(500).json({ message: 'error fetching feature flag' });
+  }
+});
+
 module.exports = router; 
