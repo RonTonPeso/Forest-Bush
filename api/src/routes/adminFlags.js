@@ -2,6 +2,7 @@ const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { apiKeyAuth } = require('../middleware/auth');
 const { createFlagSchema, updateFlagSchema } = require('../schemas/flagSchemas');
+const redis = require('../lib/redis');
 
 const prisma = new PrismaClient();
 const router = express.Router();
@@ -100,6 +101,12 @@ router.put('/:key', apiKeyAuth, async (req, res) => {
       where: { key },
       data: validationResult.data,
     });
+    
+    // invalidate cache
+    if (redis.status === 'ready') {
+      await redis.del(`flag:${key}:anonymous`);
+    }
+
     res.status(200).json(updatedFlag);
   } catch (error) {
     if (error.code === 'P2025') { // record to update not found
@@ -118,6 +125,12 @@ router.delete('/:key', apiKeyAuth, async (req, res) => {
     await prisma.featureFlag.delete({
       where: { key },
     });
+
+    // invalidate cache
+    if (redis.status === 'ready') {
+      await redis.del(`flag:${key}:anonymous`);
+    }
+
     res.status(204).send(); // 204 no content is standard for a successful delete
   } catch (error) {
     if (error.code === 'P2025') { // record to delete not found
