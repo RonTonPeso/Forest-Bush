@@ -1,4 +1,26 @@
 require('dotenv').config();
+
+// early startup logging
+console.log('application starting...');
+console.log(`database_url set: ${!!process.env.DATABASE_URL}`);
+if (process.env.DATABASE_URL) {
+    try {
+        const dbUrl = new URL(process.env.DATABASE_URL);
+        console.log(`database_url host: ${dbUrl.hostname}, user: ${dbUrl.username}`);
+    } catch (e) {
+        console.error('failed to parse database_url for logging:', e.message);
+    }
+}
+console.log(`redis_url set: ${!!process.env.REDIS_URL}`);
+if (process.env.REDIS_URL) {
+    try {
+        const rUrl = new URL(process.env.REDIS_URL);
+        console.log(`redis_url host: ${rUrl.hostname}`);
+    } catch (e) {
+        console.error('failed to parse redis_url for logging:', e.message);
+    }
+}
+
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const Redis = require('ioredis');
@@ -7,20 +29,57 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 
 const app = express();
-const prisma = new PrismaClient();
+let prisma;
+try {
+  console.log('initializing prismaclient...');
+  prisma = new PrismaClient();
+  console.log('prismaclient initialized successfully.');
+} catch (error) {
+  console.error('failed to initialize prismaclient:', error);
+  process.exit(1); // critical failure, exit
+}
+
 const PORT = process.env.PORT || 8080;
 
-// Middleware
-app.use(cors());
-app.use(helmet());
-app.use(morgan('dev'));
-app.use(express.json());
+// middleware
+app.use(cors()); 
+app.use(helmet()); 
+app.use(morgan('dev')); 
+app.use(express.json()); 
 
-// Verify REDIS_URL exist (DATABASE_URL will be used by Prisma)
 const redisUrl = process.env.REDIS_URL;
+let redis;
+if (redisUrl) {
+  try {
+    console.log('initializing redis client...');
+    redis = new Redis(redisUrl, { 
+        tls: {}, 
+        // adding connection timeout to see if it helps with debugging hangs
+        connectTimeout: 10000, // 10 seconds
+        // adding a ready check for more explicit logging
+        enableReadyCheck: true 
+    });
+    console.log('redis client initialization started.');
 
-// Basic Redis client
-const redis = new Redis(redisUrl, { tls: {} });
+    redis.on('connect', () => {
+        console.log('redis client connected.');
+    });
+    redis.on('ready', () => {
+        console.log('redis client ready.');
+    });
+    redis.on('error', (err) => {
+        console.error('redis client error:', err);
+        // depending on the error, you might want to consider if it's fatal
+        // for now, just logging. if it's a connection error at startup, the /healthz will fail.
+    });
+
+  } catch (error) {
+    console.error('failed to initialize redis client:', error);
+    // decide if this is a fatal error. for now, app will continue but /healthz will likely fail.
+  }
+} else {
+  console.warn('redis_url not set. redis client not initialized.');
+}
 
 // Simple health check
 app.get('/health', (req, res) => {
