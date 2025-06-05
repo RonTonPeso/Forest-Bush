@@ -27,6 +27,7 @@ const Redis = require('ioredis');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const adminFlagsRouter = require('./routes/adminFlags'); // import admin flags router
 
 const app = express();
 let prisma;
@@ -139,6 +140,9 @@ app.get('/flags/:key', async (req, res) => {
     res.status(500).json({ error: 'Internal server error while fetching the flag' });
   }
 });
+
+// admin routes
+app.use('/admin/flags', adminFlagsRouter); // use admin flags router
 
 app.listen(PORT, () => {
   console.log(`Forest Bush API listening on port ${PORT}`);

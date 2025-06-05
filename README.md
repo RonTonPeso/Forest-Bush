@@ -77,6 +77,9 @@ This project serves as an infrastructure capstone to demonstrate production-leve
 
     # Port for the API server to listen on
     PORT=8080
+
+    # Secret key for admin operations (generate a strong random string)
+    ADMIN_API_KEY="your_super_secret_admin_key_here_please_change_me"
     ```
 
 3.  **Install dependencies:**
@@ -129,7 +132,7 @@ The infrastructure for this project (Fly.io app, Neon Postgres, Upstash Redis) i
 
 ---
 
-## �� Project Structure
+## 🧪 Project Structure
 
 ```bash
 forest-bush/
@@ -267,3 +270,5 @@ Created by rontonpeso as an infrastructure engineering capstone project to showc
 - Observability, security, and CI/CD automation
 
 ---
+
+*For the deployed application on Fly.io, ensure `ADMIN_API_KEY` is set as a secret using `flyctl secrets set ADMIN_API_KEY=your_production_key`.*
