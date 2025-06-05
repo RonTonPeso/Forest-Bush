@@ -1,51 +1,83 @@
 require('dotenv').config();
 const express = require('express');
-const { Client } = require('pg');
+const { PrismaClient } = require('@prisma/client');
 const Redis = require('ioredis');
+const cors = require('cors');
+const helmet = require('helmet');
+const morgan = require('morgan');
 
 const app = express();
+const prisma = new PrismaClient();
 const PORT = process.env.PORT || 8080;
 
-// Verify DATABASE_URL and REDIS_URL exist
-const databaseUrl = process.env.DATABASE_URL;
-const redisUrl = process.env.REDIS_URL;
+// Middleware
+app.use(cors());
+app.use(helmet());
+app.use(morgan('dev'));
+app.use(express.json());
 
-// Basic Postgres client (no pool for demo)
-const pgClient = new Client({
-  connectionString: databaseUrl,
-  ssl: { rejectUnauthorized: false }
-});
+// Verify REDIS_URL exist (DATABASE_URL will be used by Prisma)
+const redisUrl = process.env.REDIS_URL;
 
 // Basic Redis client
 const redis = new Redis(redisUrl, { tls: {} });
 
+// Simple health check
+app.get('/health', (req, res) => {
+  res.json({ status: "ok" });
+});
+
+// Detailed health check (existing)
 app.get('/healthz', async (req, res) => {
   try {
-    // Check Postgres
-    // Ensure pgClient.connect() is called only once or handled appropriately if called multiple times
-    // For a simple health check, connecting and ending per request is fine but not for production apps.
-    if (!pgClient._connected) { // Crude check, pg client state management is more complex
-        await pgClient.connect();
-    }
-    const pgResult = await pgClient.query('SELECT NOW()');
-    // Consider not ending the connection if you plan to reuse it or use a connection pool.
-    // await pgClient.end(); 
+    // Check Postgres with Prisma
+    await prisma.$queryRaw`SELECT 1`;
 
     // Check Redis
     const pong = await redis.ping();
-    // Consider not quitting the redis connection if you plan to reuse it.
-    // await redis.quit(); 
 
     return res.json({
       status: 'ok',
-      postgres_time: pgResult.rows[0].now,
+      postgres: 'connected',
       redis: pong
     });
   } catch (error) {
-    // Ensure connections are cleaned up on error too
-    // if (pgClient._connected) await pgClient.end();
-    // if (redis.status === 'ready' || redis.status === 'connecting') await redis.quit(); 
-    return res.status(500).json({ status: 'error', error: error.message });
+    console.error('Healthz check failed:', error);
+    return res.status(500).json({ 
+      status: 'error', 
+      error: error.message,
+      details: {
+        postgres: error.message.toLowerCase().includes('database') || error.message.toLowerCase().includes('prisma') ? 'error' : 'unknown',
+        redis: error.message.toLowerCase().includes('redis') ? 'error' : 'unknown',
+      }
+    });
+  }
+});
+
+// Get a feature flag by key
+app.get('/flags/:key', async (req, res) => {
+  const { key } = req.params;
+  try {
+    const flag = await prisma.featureFlag.findUnique({
+      where: { key },
+    });
+
+    if (!flag) {
+      return res.status(404).json({ error: 'Flag not found' });
+    }
+
+    // Return the flag data; client-side will handle rules if necessary for this basic version
+    // For now, just check 'enabled' status as per instructions
+    if (flag.enabled) {
+      return res.json(flag);
+    } else {
+      // Return the flag object even if not enabled, but with a clear status or message
+      return res.status(200).json({ message: 'Flag is not currently enabled', enabled: flag.enabled, key: flag.key, flag });
+    }
+
+  } catch (error) {
+    console.error(`Error fetching flag '${key}':`, error);
+    res.status(500).json({ error: 'Internal server error while fetching the flag' });
   }
 });
 
@@ -53,30 +85,29 @@ app.listen(PORT, () => {
   console.log(`Forest Bush API listening on port ${PORT}`);
 });
 
-// Graceful shutdown: Ensure database and Redis connections are closed when the app exits.
-// This is important for preventing resource leaks.
-process.on('SIGINT', async () => {
-  console.log('SIGINT signal received: closing HTTP server')
-  if (pgClient && pgClient._connected) {
-    await pgClient.end();
-    console.log('PostgreSQL client disconnected');
-  }
-  if (redis && (redis.status === 'ready' || redis.status === 'connecting' || redis.status === 'connected')) {
-    await redis.quit();
-    console.log('Redis client disconnected');
-  }
-  process.exit(0)
-})
+// Graceful shutdown
+async function gracefulShutdown(signal) {
+  console.log(`${signal} signal received: closing HTTP server`);
+  // Add any other cleanup tasks here, like closing the HTTP server itself if needed
+  // server.close(() => { ... });
 
-process.on('SIGTERM', async () => {
-  console.log('SIGTERM signal received: closing HTTP server')
-  if (pgClient && pgClient._connected) {
-    await pgClient.end();
-    console.log('PostgreSQL client disconnected');
+  try {
+    await prisma.$disconnect();
+    console.log('Prisma client disconnected');
+  } catch (e) {
+    console.error('Error disconnecting Prisma client', e);
   }
+
   if (redis && (redis.status === 'ready' || redis.status === 'connecting' || redis.status === 'connected')) {
-    await redis.quit();
-    console.log('Redis client disconnected');
+    try {
+      await redis.quit();
+      console.log('Redis client disconnected');
+    } catch (e) {
+      console.error('Error disconnecting Redis client', e);
+    }
   }
-  process.exit(0)
-}) 
+  process.exit(0);
+}
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM')); 
