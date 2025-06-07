@@ -5,7 +5,7 @@ bushy forest - feature flag and experimentation platform
 
 Forest Bush is a **cloud-native feature flag management platform** built for modern dev teams. It empowers developers and product managers to safely roll out features, run experiments, and decouple deployments from releases.
 
-This project serves as an infrastructure capstone to demonstrate production-level capabilities across:
+This project serves as an infrastructure  to demonstrate production-level capabilities across:
 
 - Infrastructure as Code (Terraform)
 - CI/CD pipelines
@@ -184,8 +184,6 @@ POST /flags
 ```
 Create a new flag (admin-only)
 
-> Want full API documentation? Check the `/api/docs` once the Swagger/OpenAPI spec is implemented in Phase 3.
-
 ---
 
 ## 🌍 Environments & Configuration
@@ -197,19 +195,6 @@ DATABASE_URL=...        # Neon Postgres DB
 REDIS_URL=...           # Upstash Redis instance
 PORT=8080
 ```
-
----
-
-## 🧱 Infrastructure Stack
-
-| Layer | Tool |
-|-------|------|
-| IaC | Terraform |
-| Cloud | Fly.io (App), Neon (Postgres), Upstash (Redis) |
-| CI/CD | GitHub Actions |
-| Monitoring | Logs via Fly.io + Prometheus/Grafana (planned) |
-| Deployment | Docker + Fly.io |
-| Secrets | Terraform Cloud Environment Variables |
 
 ---
 
@@ -242,20 +227,11 @@ Planned:
 
 ---
 
-## 🧠 Why This Project?
-
-Forest Bush is not just a clone of LaunchDarkly. It's:
-
-- A modular platform you can iterate on: experimentation, SDKs, frontend UI, more flag types
-- **Free-tier** friendly, with cloud-agnostic design
-
----
-
 ## 🚧 Roadmap
 
-- [x] Phase 0 - Infrastructure Setup
-- [x] Phase 1 - App Provisioning
-- [x] Phase 2 - Backend API MVP
+- [ ] Phase 0 - Infrastructure Setup
+- [ ] Phase 1 - App Provisioning
+- [ ] Phase 2 - Backend API MVP
 - [ ] Phase 3 - Flag Logic + Admin Features
 - [ ] Phase 4 - Frontend Dashboard
 - [ ] Phase 5 - CI/CD, Observability, Docs
@@ -264,11 +240,6 @@ Forest Bush is not just a clone of LaunchDarkly. It's:
 
 ## 🙋‍♂️ Author
 
-Created by rontonpeso as an infrastructure engineering capstone project to showcase:
-- System design
-- Cost-effective deployment
-- Observability, security, and CI/CD automation
-
----
+Created by rontonpeso
 
 *For the deployed application on Fly.io, ensure `ADMIN_API_KEY` is set as a secret using `flyctl secrets set ADMIN_API_KEY=your_production_key`.*
