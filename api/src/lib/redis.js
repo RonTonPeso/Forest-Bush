@@ -1,3 +1,5 @@
+// this file is used to initialize the redis client
+
 const Redis = require('ioredis');
 
 console.log('initializing shared redis client...');
