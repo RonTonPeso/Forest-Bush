@@ -95,12 +95,17 @@ app.get('/flags/:key', async (req, res) => {
 
   try {
     // --- cache check ---
-    if (redis.status === 'ready') {
-      const cachedResult = await redis.get(cacheKey);
-      if (cachedResult) {
-        console.log(`[cache hit] for key: ${cacheKey}`);
-        return res.status(200).json(JSON.parse(cachedResult));
+    let cachedResult = null;
+    try {
+      if (redis.status === 'ready') {
+        cachedResult = await redis.get(cacheKey);
+        if (cachedResult) {
+          console.log(`[cache hit] for key: ${cacheKey}`);
+          return res.status(200).json(JSON.parse(cachedResult));
+        }
       }
+    } catch (cacheError) {
+      console.warn(`cache read failed for ${cacheKey}:`, cacheError.message);
     }
     console.log(`[cache miss] for key: ${cacheKey}`);
 
@@ -140,9 +145,13 @@ app.get('/flags/:key', async (req, res) => {
     }
 
     // --- set cache ---
-    if (redis.status === 'ready') {
-      // cache the result for 60 seconds
-      await redis.set(cacheKey, JSON.stringify(result), 'EX', 60);
+    try {
+      if (redis.status === 'ready') {
+        // cache the result for 60 seconds
+        await redis.set(cacheKey, JSON.stringify(result), 'EX', 60);
+      }
+    } catch (cacheError) {
+      console.warn(`cache write failed for ${cacheKey}:`, cacheError.message);
     }
     return res.status(200).json(result);
 
