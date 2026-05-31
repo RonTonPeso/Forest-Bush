@@ -1,0 +1,25 @@
+{
+  "name": "@forest-bush/sdk-js",
+  "version": "0.1.0",
+  "description": "Official Javascript SDK for the Forest Bush feature flag service.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "feature-flags",
+    "sdk"
+  ],
+  "author": "rontonpeso",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^20.12.12",
+    "typescript": "^5.4.5"
+  }
+}
