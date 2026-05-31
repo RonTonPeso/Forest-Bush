@@ -129,15 +129,19 @@ Desktop.ini
 # Binaries
 api/bin/bin/flyctl
 
-# Terraform state files
-terraform.tfstate
-terraform.tfstate.backup
+# Terraform local state and variable values
 .terraform/
-.terraform.lock.hcl
-# We might want to commit terraform.tfvars if it doesn't contain secrets,
-# but for now, let's ignore it as it often contains sensitive data or environment-specific values.
-# If you decide to commit it, remove the line below and ensure no secrets are present.
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
 *.tfvars
+*.tfvars.json
+!.terraform.lock.hcl
 
 # Fly path files
 # We created this temporarily for debugging flyctl path issues

@@ -1,245 +1,321 @@
-# Forest-Bush
-bushy forest - feature flag and experimentation platform 
+# Forest Bush
 
-# 🌲 Forest Bush — Feature Flag Management & Delivery Platform
+Forest Bush is a self-hosted feature flag service. The current repository is a
+working MVP with a Node/Express API, PostgreSQL persistence through Prisma,
+Redis-backed evaluation caching, a React admin dashboard, a small JavaScript SDK,
+Fly.io deployment files, Terraform configuration, and a GitHub Actions deploy
+workflow for the API.
 
-Forest Bush is a **cloud-native feature flag management platform** built for modern dev teams. It empowers developers and product managers to safely roll out features, run experiments, and decouple deployments from releases.
+The product is focused on a simple loop:
 
-This project serves as an infrastructure  to demonstrate production-level capabilities across:
+1. Create and manage flags from the admin dashboard or admin API.
+2. Evaluate flags from client applications through the public API or JS SDK.
+3. Use percentage rollout rules for sticky user-based releases.
 
-- Infrastructure as Code (Terraform)
-- CI/CD pipelines
-- Scalable backend architecture
-- Observability and logging
-- Secure and cost-effective cloud deployment
-- Multi-environment support
+## Current Capabilities
 
----
+- Public flag evaluation at `GET /flags/:key`
+- Admin CRUD endpoints under `/admin/flags`
+- API-key protection for admin endpoints with the `x-api-key` header
+- Boolean flag enable/disable state
+- Percentage rollout rule support with stable hashing when `userId` is supplied
+- Redis result caching for public flag evaluations
+- PostgreSQL storage for flag metadata and JSON rules
+- React/Vite admin UI for login, listing, creating, toggling, editing, and deleting flags
+- TypeScript JS SDK with optional in-memory client-side caching
+- Dockerfiles and Fly.io configuration for both API and admin UI
+- Terraform Cloud configuration for the Fly.io API app and API secrets
+- GitHub Actions workflow that deploys the API to Fly.io on pushes to `main`
 
-## 📦 Key Features
+## Not Yet Implemented
 
-- ✅ **Create and manage feature flags** via dashboard or API
-- 🌍 **Roll out features by region, percentage, or custom rules**
-- ⚡ **Ultra-low-latency flag delivery** using Redis caching
-- 📊 **Flag usage logging and metrics**
-- 🔒 **Secure, tenant-aware architecture** with RBAC
-- ☁️ Deployed to Fly.io, with **Postgres via Neon** and **Redis via Upstash**
+These are useful product directions, but they are not currently implemented in
+this repository:
 
----
+- Multi-tenant organizations or projects
+- RBAC, user accounts, or OAuth login
+- Audit logs and flag change history
+- Experiment analytics, conversion tracking, or usage metrics
+- Region, attribute, segment, or custom-rule targeting
+- Server-sent events, streaming updates, or SDK polling
+- Published npm package for the JS SDK
+- Automated tests
+- Admin UI deployment through the current GitHub Actions workflow
 
-## 🏗️ System Architecture
+## Architecture
 
+```text
+Client app
+  |
+  |  JS SDK or direct HTTP request
+  v
+Forest Bush API on Fly.io
+  |
+  |-- Prisma -> PostgreSQL
+  |
+  `-- ioredis -> Redis evaluation cache
+
+Admin user
+  |
+  v
+React admin UI on Fly.io
+  |
+  `-- Admin API requests with x-api-key
 ```
-          ┌───────────────────┐
-          │   Client Apps     │
-          └────────┬──────────┘
-                   │
-        HTTPS REST API (Fly.io)
-                   │
-         ┌────────▼────────┐
-         │   Backend API   │ ◀────────────┐
-         │ (Node.js + ORM) │              │
-         └────────┬────────┘              │
-                  │                       │
-       ┌──────────▼──────────┐    ┌───────▼────────┐
-       │ Neon Postgres (flags│    │ Redis Cache    │
-       │  + rules metadata)  │    │ (Upstash)      │
-       └─────────────────────┘    └────────────────┘
+
+## Repository Structure
+
+```text
+.
+├── api/                  # Express API, Prisma schema, Dockerfile, Fly config
+├── admin-ui/             # React + TypeScript + Vite admin dashboard
+├── sdk-js/               # TypeScript JavaScript SDK
+├── infra/terraform/      # Terraform Cloud/Fly.io app and secret configuration
+├── .github/workflows/    # API deployment workflow
+├── index.html            # Root HTML shell from the UI template
+└── README.md
 ```
 
----
+## API
 
-## 🚀 Quick Start
+The API is an Express 5 service using Prisma, PostgreSQL, ioredis, Zod, Helmet,
+CORS, and Morgan.
 
-### Prerequisites
+### Environment
 
-- [Node.js](https://nodejs.org/)
-- [Fly CLI](https://fly.io/docs/hands-on/install-flyctl/)
-- [Terraform CLI](https://developer.hashicorp.com/terraform/downloads)
-- [Docker](https://www.docker.com/)
-- `curl` or Postman for testing
+Create `api/.env`:
 
-### Local Development (API)
+```env
+DATABASE_URL="postgresql://user:password@host:5432/dbname?sslmode=require"
+REDIS_URL="redis://default:password@host:6379"
+PORT=8080
+ADMIN_API_KEY="replace-with-a-strong-secret"
+```
 
-1.  **Navigate to the API directory:**
-    ```bash
-    cd api
-    ```
+`ADMIN_API_KEY` protects admin routes. If it is missing, the current code allows
+admin access and logs a warning, which is convenient for local experiments but
+should not be used in production.
 
-2.  **Set up environment variables:**
-    Create a `.env` file in the `api/` directory (`api/.env`) with the following content, replacing placeholders with your actual credentials:
-    ```env
-    # Neon Postgres connection string (obtain from your Neon dashboard)
-    DATABASE_URL="postgresql://user:password@host:port/dbname?sslmode=require"
-
-    # Upstash Redis connection string (obtain from your Upstash dashboard)
-    REDIS_URL="redis://default:password@host:port"
-
-    # Port for the API server to listen on
-    PORT=8080
-
-    # Secret key for admin operations (generate a strong random string)
-    ADMIN_API_KEY="your_super_secret_admin_key_here_please_change_me"
-    ```
-
-3.  **Install dependencies:**
-    ```bash
-    npm install
-    ```
-
-4.  **Run database migrations:**
-    This will apply the schema and generate the Prisma client.
-    ```bash
-    npx prisma migrate dev
-    ```
-    *Note: If you encounter issues, ensure your `DATABASE_URL` in `.env` is correct and your Neon database is accessible.*
-
-5.  **Start the development server:**
-    ```bash
-    npm run dev
-    ```
-    The API should now be running locally, typically at `http://localhost:8080`.
-
-6.  **(Optional) Seed initial data:**
-    For testing endpoints like `/flags/:key`, you might want to manually add some feature flags to your Neon database.
-
-### Terraform Setup (Infrastructure)
-
-The infrastructure for this project (Fly.io app, Neon Postgres, Upstash Redis) is managed by Terraform. The configuration is located in the `infra/terraform/` directory.
-
-1.  **Prerequisites:**
-    *   Ensure you have Terraform CLI installed.
-    *   You have set up a Terraform Cloud account and organization.
-    *   A Terraform Cloud workspace (e.g., "forest-bush") is created and configured to use the version control workflow, pointing to your repository and the `infra/terraform` directory.
-    *   The following environment variables are configured as **sensitive** variables in your Terraform Cloud workspace:
-        *   `FLY_API_TOKEN`: Your Fly.io API token.
-        *   `TF_VAR_db_url`: Your Neon Postgres connection string. (Terraform will use this to inform the Fly app, but doesn't provision the DB itself).
-        *   `TF_VAR_redis_url`: Your Upstash Redis connection string. (Terraform will use this to inform the Fly app, but doesn't provision Redis itself).
-
-2.  **Initialize Terraform:**
-    Navigate to the Terraform directory and initialize Terraform. This is usually handled by Terraform Cloud, but for local planning/testing:
-    ```bash
-    cd infra/terraform
-    terraform init
-    ```
-
-3.  **Plan and Apply:**
-    Terraform Cloud will automatically plan and apply changes on commits to the `main` branch (if configured for auto-apply). For manual local application (ensure your backend is configured correctly or use local state for testing):
-    ```bash
-    terraform plan
-    terraform apply
-    ```
-
----
-
-## 🧪 Project Structure
+### Local Development
 
 ```bash
-forest-bush/
-│
-├── infra/               # Infrastructure-as-code (Terraform)
-│   ├── main.tf          # DigitalOcean, Fly.io, Neon, Upstash resources
-│   └── ...
-│
-├── api/                 # Backend API
-│   ├── prisma/          # Prisma schema and migrations
-│   ├── src/
-│   │   ├── routes/
-│   │   └── index.js
-│   ├── .env             # Environment variables (for local dev only) - DO NOT COMMIT
-│   └── Dockerfile       # Fly.io deployment config
-│
-├── web/                 # Frontend UI (optional future phase)
-│   └── ...
-│
-├── .github/             # GitHub Actions CI/CD
-│
-└── README.md            # This file
+cd api
+npm install
+npx prisma migrate dev
+npm run dev
 ```
 
----
+The API listens on `http://localhost:8080` by default.
 
-## 🧪 API Usage
+### Public Endpoints
 
-The API is deployed and accessible.
-
-**Live Demo Endpoints:**
--   Application Root: [https://forest-bush.fly.dev/](https://forest-bush.fly.dev/)
--   Health Check: [https://forest-bush.fly.dev/health](https://forest-bush.fly.dev/health)
--   Health Check (with DB/Redis): [https://forest-bush.fly.dev/healthz](https://forest-bush.fly.dev/healthz)
-
-**Key Endpoints:**
 ```http
 GET /health
 ```
-Check if the API is running
+
+Returns a simple process health response.
+
+```http
+GET /healthz
+```
+
+Checks PostgreSQL and Redis connectivity.
 
 ```http
 GET /flags/:key
+GET /flags/:key?userId=user-123
 ```
-Retrieve a flag's state and rule info
+
+Evaluates a flag. If `userId` is supplied, percentage rollouts are sticky for
+that user because evaluation hashes `flagKey:userId`.
+
+Example response:
+
+```json
+{
+  "key": "new-checkout-flow",
+  "enabled": true,
+  "reason": "rollout"
+}
+```
+
+### Admin Endpoints
+
+All admin requests require:
 
 ```http
-POST /flags
+x-api-key: your-admin-api-key
 ```
-Create a new flag (admin-only)
 
----
+Create a flag:
 
-## 🌍 Environments & Configuration
+```http
+POST /admin/flags
+Content-Type: application/json
 
-Environment variables:
+{
+  "key": "new-checkout-flow",
+  "description": "Controls the new checkout experience",
+  "enabled": true,
+  "rules": {
+    "rolloutPercentage": 25
+  }
+}
+```
+
+List flags:
+
+```http
+GET /admin/flags
+```
+
+Get one flag:
+
+```http
+GET /admin/flags/:key
+```
+
+Update a flag:
+
+```http
+PUT /admin/flags/:key
+Content-Type: application/json
+
+{
+  "enabled": false,
+  "rules": {
+    "rolloutPercentage": 0
+  }
+}
+```
+
+Delete a flag:
+
+```http
+DELETE /admin/flags/:key
+```
+
+## Admin UI
+
+The admin UI is a React 18, Vite, TypeScript, Tailwind, and lucide-react
+application. It stores the admin API key in `localStorage`, verifies it by
+calling `GET /admin/flags`, and then uses it for flag management requests.
+
+### Local Development
+
+```bash
+cd admin-ui
+npm install
+npm run dev
+```
+
+By default the UI calls `http://localhost:8080`. To point it at another API:
 
 ```env
-DATABASE_URL=...        # Neon Postgres DB
-REDIS_URL=...           # Upstash Redis instance
-PORT=8080
+VITE_API_URL="https://forest-bush.fly.dev"
 ```
 
----
+The Fly.io UI configuration builds with `VITE_API_URL=https://forest-bush.fly.dev`
+and serves the built app with `serve` on port `3000`.
 
-## 🔐 Security Considerations
+## JavaScript SDK
 
-- Secrets are stored in **Terraform Cloud** and **Fly.io secrets**
-- Redis access is **token-based**
-- Postgres uses **SSL enforced connections**
-- Future plans: RBAC, JWT authentication, audit logs
+The SDK lives in `sdk-js/` and exports `ForestBushClient`.
 
----
+```bash
+cd sdk-js
+npm install
+npm run build
+```
 
-## 🧪 CI/CD Pipeline (Phase 3)
+Example:
 
-- `infra/` triggers Terraform Cloud via GitHub push
-- `api/` deploys to Fly.io via GitHub Actions on PR merge
-- `web/` (future): Netlify or Vercel deployment
+```ts
+import { ForestBushClient } from '@forest-bush/sdk-js';
 
----
+const forestBush = new ForestBushClient({
+  host: 'https://forest-bush.fly.dev',
+  cacheTTL: 30,
+});
 
-## 📈 Observability & Monitoring
+const enabled = await forestBush.evaluate(
+  'new-checkout-flow',
+  false,
+  'user-123'
+);
+```
 
-Currently:
-- Live logs via `fly logs`
+The SDK package metadata is prepared as `@forest-bush/sdk-js`, but the package
+is not currently published to npm.
 
-Planned:
-- Prometheus metrics
-- Grafana dashboards
-- Alerts via email or Slack
+## Deployment
 
----
+### API
 
-## 🚧 Roadmap
+The API has:
 
-- [ ] Phase 0 - Infrastructure Setup
-- [ ] Phase 1 - App Provisioning
-- [ ] Phase 2 - Backend API MVP
-- [ ] Phase 3 - Flag Logic + Admin Features
-- [ ] Phase 4 - Frontend Dashboard
-- [ ] Phase 5 - CI/CD, Observability, Docs
+- `api/Dockerfile`
+- `api/fly.toml` for the `forest-bush` Fly.io app
+- `.github/workflows/fly-deploy.yml`, which deploys `api/` to Fly.io on pushes
+  to `main`
 
----
+Required Fly secrets:
 
-## 🙋‍♂️ Author
+```bash
+flyctl secrets set DATABASE_URL="..." REDIS_URL="..." ADMIN_API_KEY="..." --app forest-bush
+```
 
-Created by rontonpeso
+### Admin UI
 
-*For the deployed application on Fly.io, ensure `ADMIN_API_KEY` is set as a secret using `flyctl secrets set ADMIN_API_KEY=your_production_key`.*
+The admin UI has:
+
+- `admin-ui/Dockerfile`
+- `admin-ui/fly.toml` for the `forest-bush-ui` Fly.io app
+
+There is not currently a GitHub Actions workflow for deploying the admin UI.
+
+### Terraform
+
+`infra/terraform/` is configured for Terraform Cloud organization `Ronton` and
+workspace `forest-bush`. It uses the Fly provider to create the API Fly app and
+a `null_resource` local-exec step to set `DATABASE_URL` and `REDIS_URL` as Fly
+secrets.
+
+Terraform variables:
+
+```hcl
+fly_api_token = "..."
+db_url        = "..."
+redis_url     = "..."
+```
+
+Note that Terraform does not provision PostgreSQL or Redis. Those services are
+expected to exist already, for example through Neon and Upstash.
+
+## Known Issues
+
+- The admin UI expects `rolloutPercentage` as a top-level flag property, but the
+  API stores rollout data under `rules.rolloutPercentage`. The API evaluation
+  logic supports rollout rules, but the UI display/edit flow needs to be aligned
+  with the API response shape.
+- Updating or deleting a flag only invalidates the anonymous Redis cache key.
+  User-specific cached evaluations such as `flag:my-flag:user-123` may remain
+  stale until their 60 second TTL expires.
+- Redis is initialized at startup from `REDIS_URL`. Local development is easier
+  if Redis is always available or the API explicitly supports a no-Redis mode.
+- The API has no automated tests around evaluation behavior, admin validation,
+  cache invalidation, or error handling.
+- The admin UI stores the admin API key in `localStorage`, which is acceptable
+  for a prototype but not ideal for a production control plane.
+
+## Roadmap Ideas
+
+- Fix the admin UI/API rule-shape mismatch.
+- Add integration tests with test PostgreSQL and Redis containers.
+- Add audit events for every flag change.
+- Introduce projects/environments so flags can differ between development,
+  staging, and production.
+- Add targeting rules for user attributes and reusable segments.
+- Add SDK polling, bootstrap values, and offline fallback behavior.
+- Publish the SDK package and add examples for Node, React, and Next.js.
+- Add an admin UI deployment workflow.
