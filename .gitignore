@@ -146,3 +146,6 @@ override.tf.json
 # Fly path files
 # We created this temporarily for debugging flyctl path issues
 # .flyctl_path 
+
+# Personal local notes
+notes.md
