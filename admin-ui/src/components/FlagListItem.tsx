@@ -28,7 +28,7 @@ export default function FlagListItem({ flag, onUpdate, onDelete, onEdit }: FlagL
       });
       onUpdate(updatedFlag);
       toast.success(`Flag "${flag.key}" ${newEnabledState ? 'enabled' : 'disabled'}.`);
-    } catch (error) {
+    } catch {
       toast.error('Failed to update flag. Please try again.');
     } finally {
       setIsUpdating(false);
@@ -46,7 +46,7 @@ export default function FlagListItem({ flag, onUpdate, onDelete, onEdit }: FlagL
         await apiClient.deleteFlag(apiKey, flag.key);
         onDelete(flag.key);
         toast.success(`Flag "${flag.key}" deleted.`);
-      } catch (error) {
+      } catch {
         toast.error('Failed to delete flag. Please try again.');
       } finally {
         setIsUpdating(false);
@@ -82,7 +82,7 @@ export default function FlagListItem({ flag, onUpdate, onDelete, onEdit }: FlagL
         </div>
       </div>
       <div className="text-xs text-gray-500 mt-2">
-        Rollout: {flag.rolloutPercentage}%
+        Rollout: {flag.rules?.rolloutPercentage ?? 0}%
       </div>
     </div>
   );

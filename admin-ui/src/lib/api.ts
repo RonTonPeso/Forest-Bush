@@ -4,10 +4,20 @@ export interface FeatureFlag {
   key: string;
   description: string;
   enabled: boolean;
-  rolloutPercentage: number;
+  rules?: {
+    rolloutPercentage?: number;
+  } | null;
   createdAt: string;
   updatedAt: string;
 }
+
+export type FeatureFlagUpdate = {
+  description?: string;
+  enabled?: boolean;
+  rules?: {
+    rolloutPercentage?: number;
+  } | null;
+};
 
 export const apiClient = {
   getApiUrl: () => {
@@ -49,7 +59,7 @@ export const apiClient = {
   },
 
   // Method to update a feature flag (e.g., toggle it)
-  updateFlag: async (apiKey: string, key: string, data: Partial<FeatureFlag>): Promise<FeatureFlag> => {
+  updateFlag: async (apiKey: string, key: string, data: FeatureFlagUpdate): Promise<FeatureFlag> => {
     const response = await fetch(`${apiClient.getApiUrl()}/admin/flags/${key}`, {
       method: 'PUT',
       headers: apiClient.getHeaders(apiKey),
@@ -85,4 +95,4 @@ export const apiClient = {
       throw new Error('Failed to delete flag.');
     }
   },
-}; 
+};

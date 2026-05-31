@@ -1,28 +1,26 @@
-const ADMIN_API_KEY = process.env.ADMIN_API_KEY;
-
-if (!ADMIN_API_KEY) {
-  console.warn('STARTUP WARNING: ADMIN_API_KEY is not set. Admin routes will not be protected.');
-}
-
-const apiKeyAuth = (req, res, next) => {
-  if (!ADMIN_API_KEY) {
-    // for local dev, we can allow access without a key, but log a warning.
-    // in a real production environment, this should probably be a hard error.
-    console.warn('Warning: ADMIN_API_KEY is not set in env. Allowing access to admin route.');
-    return next();
+const createApiKeyAuth = ({ adminApiKey = process.env.ADMIN_API_KEY, logger = console } = {}) => {
+  if (!adminApiKey) {
+    logger.warn('STARTUP WARNING: ADMIN_API_KEY is not set. Admin routes will not be protected.');
   }
 
-  const receivedApiKey = req.headers['x-api-key'];
+  return (req, res, next) => {
+    if (!adminApiKey) {
+      logger.warn('Warning: ADMIN_API_KEY is not set in env. Allowing access to admin route.');
+      return next();
+    }
 
-  if (!receivedApiKey) {
-    return res.status(401).json({ error: 'unauthorized: api key required in x-api-key header.' });
-  }
+    const receivedApiKey = req.headers['x-api-key'];
 
-  if (receivedApiKey !== ADMIN_API_KEY) {
-    return res.status(403).json({ error: 'forbidden: invalid api key.' });
-  }
-  
-  next();
+    if (!receivedApiKey) {
+      return res.status(401).json({ error: 'unauthorized: api key required in x-api-key header.' });
+    }
+
+    if (receivedApiKey !== adminApiKey) {
+      return res.status(403).json({ error: 'forbidden: invalid api key.' });
+    }
+
+    next();
+  };
 };
 
-module.exports = { apiKeyAuth }; 
+module.exports = { createApiKeyAuth };

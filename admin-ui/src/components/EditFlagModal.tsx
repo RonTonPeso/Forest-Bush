@@ -7,7 +7,7 @@ interface EditFlagModalProps {
   onClose: () => void;
   onUpdate: (updatedFlag: FeatureFlag) => void;
   flag: FeatureFlag | null;
-  apiCall: (key: string, data: { rolloutPercentage: number }) => Promise<FeatureFlag>;
+  apiCall: (key: string, data: { rules: { rolloutPercentage: number } }) => Promise<FeatureFlag>;
 }
 
 export default function EditFlagModal({ isOpen, onClose, onUpdate, flag, apiCall }: EditFlagModalProps) {
@@ -16,7 +16,7 @@ export default function EditFlagModal({ isOpen, onClose, onUpdate, flag, apiCall
 
   useEffect(() => {
     if (flag) {
-      setRolloutPercentage(flag.rolloutPercentage);
+      setRolloutPercentage(flag.rules?.rolloutPercentage ?? 0);
     }
   }, [flag]);
 
@@ -26,11 +26,11 @@ export default function EditFlagModal({ isOpen, onClose, onUpdate, flag, apiCall
 
     setIsUpdating(true);
     try {
-      const updatedFlag = await apiCall(flag.key, { rolloutPercentage });
+      const updatedFlag = await apiCall(flag.key, { rules: { rolloutPercentage } });
       onUpdate(updatedFlag);
       toast.success(`Flag "${flag.key}" updated successfully!`);
       onClose();
-    } catch (err) {
+    } catch {
       toast.error('Failed to update rollout percentage.');
     } finally {
       setIsUpdating(false);
@@ -86,4 +86,4 @@ export default function EditFlagModal({ isOpen, onClose, onUpdate, flag, apiCall
       </div>
     </div>
   );
-} 
+}

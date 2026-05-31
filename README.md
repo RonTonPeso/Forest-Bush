@@ -27,20 +27,40 @@ The product is focused on a simple loop:
 - Terraform Cloud configuration for the Fly.io API app and API secrets
 - GitHub Actions workflow that deploys the API to Fly.io on pushes to `main`
 
-## Not Yet Implemented
+## Product Direction
 
-These are useful product directions, but they are not currently implemented in
-this repository:
+Forest Bush is not trying to become a broad LaunchDarkly clone. The near-term
+goal is a complete, self-hosted feature flag platform for small teams: safe
+rollouts, clear admin workflows, trustworthy evaluation behavior, useful SDKs,
+and enough operational visibility to understand flag changes.
 
-- Multi-tenant organizations or projects
-- RBAC, user accounts, or OAuth login
-- Audit logs and flag change history
-- Experiment analytics, conversion tracking, or usage metrics
-- Region, attribute, segment, or custom-rule targeting
-- Server-sent events, streaming updates, or SDK polling
-- Published npm package for the JS SDK
-- Automated tests
-- Admin UI deployment through the current GitHub Actions workflow
+The next version should prioritize depth over breadth:
+
+- Correct flag evaluation across API, admin UI, and SDK
+- Environment-aware flags for development, staging, and production
+- Audit history for every flag change
+- A flag detail page with rule editing and test evaluation
+- SDK polling or local snapshots so applications are not dependent on one API
+  request per flag check
+- Integration tests for the critical evaluation and admin paths
+- Admin UI deployment through GitHub Actions
+
+## Intentional Non-Goals For Now
+
+These features are valuable, but they are intentionally deferred so the project
+can feel complete instead of broad and shallow:
+
+- SaaS-style multi-tenant organizations and billing
+- Full RBAC, user invitations, SSO, or OAuth login
+- Experiment analytics, conversion tracking, and statistical reporting
+- Complex custom targeting languages
+- Region-based targeting
+- A large SDK matrix across many programming languages
+- Enterprise compliance features
+
+If the core flag platform becomes reliable and polished, the most likely future
+expansion paths are advanced targeting or lightweight experimentation. Those
+should come after environments, audit logs, tests, and SDK behavior are solid.
 
 ## Architecture
 
@@ -127,7 +147,9 @@ GET /flags/:key?userId=user-123
 ```
 
 Evaluates a flag. If `userId` is supplied, percentage rollouts are sticky for
-that user because evaluation hashes `flagKey:userId`.
+that user because evaluation hashes `flagKey:userId`. Percentage rollout rules
+require `userId`; anonymous percentage evaluations return disabled with
+`reason: "context_required"`.
 
 Example response:
 
@@ -292,30 +314,48 @@ redis_url     = "..."
 Note that Terraform does not provision PostgreSQL or Redis. Those services are
 expected to exist already, for example through Neon and Upstash.
 
+## Tests
+
+API integration tests require a separate PostgreSQL database. Set
+`TEST_DATABASE_URL` before running tests:
+
+```bash
+cd api
+TEST_DATABASE_URL="postgresql://user:password@localhost:5432/forest_bush_test" npm test
+```
+
+The test suite runs Prisma migrations against `TEST_DATABASE_URL`, clears
+feature-flag rows between tests, and uses an in-memory Redis adapter.
+
 ## Known Issues
 
-- The admin UI expects `rolloutPercentage` as a top-level flag property, but the
-  API stores rollout data under `rules.rolloutPercentage`. The API evaluation
-  logic supports rollout rules, but the UI display/edit flow needs to be aligned
-  with the API response shape.
-- Updating or deleting a flag only invalidates the anonymous Redis cache key.
-  User-specific cached evaluations such as `flag:my-flag:user-123` may remain
-  stale until their 60 second TTL expires.
-- Redis is initialized at startup from `REDIS_URL`. Local development is easier
-  if Redis is always available or the API explicitly supports a no-Redis mode.
-- The API has no automated tests around evaluation behavior, admin validation,
-  cache invalidation, or error handling.
 - The admin UI stores the admin API key in `localStorage`, which is acceptable
   for a prototype but not ideal for a production control plane.
 
-## Roadmap Ideas
+## Roadmap
 
-- Fix the admin UI/API rule-shape mismatch.
-- Add integration tests with test PostgreSQL and Redis containers.
-- Add audit events for every flag change.
-- Introduce projects/environments so flags can differ between development,
-  staging, and production.
-- Add targeting rules for user attributes and reusable segments.
-- Add SDK polling, bootstrap values, and offline fallback behavior.
-- Publish the SDK package and add examples for Node, React, and Next.js.
+### Phase 1: Stabilize
+
+- [x] Fix the admin UI/API rule-shape mismatch.
+- [x] Add integration tests with test PostgreSQL and in-memory Redis.
+- [x] Improve Redis cache invalidation with versioned cache keys.
+- [x] Make local development resilient when Redis is unavailable.
+- [x] Keep API, admin UI, and SDK contracts aligned.
+
+### Phase 2: Complete The Core Product
+
+- Add environments so flags can differ between development, staging, and
+  production.
+- Add audit events for every flag create, update, toggle, and delete.
+- Add a flag detail page with editable rules, recent history, and test
+  evaluation for a sample `userId`.
 - Add an admin UI deployment workflow.
+- Publish the SDK package and add examples for Node, React, and Next.js.
+
+### Phase 3: Make It Distinctive
+
+- Add SDK polling, bootstrap values, and offline fallback behavior.
+- Add signed or versioned flag snapshots for fast local evaluation.
+- Add evaluation traces that explain why a user received a flag value.
+- Add simple user-attribute targeting and reusable segments only after the core
+  experience is stable.

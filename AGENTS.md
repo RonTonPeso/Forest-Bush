@@ -28,15 +28,15 @@ Redis caches public evaluation results for 60 seconds.
 
 ## Important Known Issues
 
-The admin UI and API currently disagree about rollout shape. The API expects and
-returns `rules.rolloutPercentage`, but the UI types and edit modal use a
-top-level `rolloutPercentage`. Fix this before building more rollout UI.
+The API, admin UI, and docs use `rules.rolloutPercentage` as the canonical
+rollout shape. Do not reintroduce a top-level `rolloutPercentage` field.
 
-Cache invalidation only deletes `flag:${key}:anonymous` on update/delete.
-User-specific cache entries can remain stale until TTL expiry.
+Percentage rollout requires `userId`. Anonymous percentage evaluations return
+disabled with `reason: "context_required"` to avoid random cached behavior.
 
-The API test script is a placeholder. Do not claim tests pass unless real tests
-have been added.
+Redis cache keys are versioned with `flag-version:<key>`. Admin create, update,
+and delete should increment that version so user-specific evaluations do not
+stay stale after mutations.
 
 If `ADMIN_API_KEY` is missing, admin routes are allowed with a warning. This is
 acceptable for local prototyping only.
@@ -71,8 +71,9 @@ npm install
 npm run build
 ```
 
-Useful verification today: `admin-ui npm run build` and `sdk-js npm run build`.
-`api npm run test` currently fails by design because no tests are defined.
+Useful verification today: `api npm test`, `admin-ui npm run build`, and
+`sdk-js npm run build`. API tests require `TEST_DATABASE_URL` and use in-memory
+Redis.
 
 ## Environment
 
@@ -106,8 +107,6 @@ admin UI has Fly config but no deploy workflow.
 
 ## Good Next Technical Steps
 
-The strongest improvements are: fix the rollout contract mismatch, add API
-integration tests, add cache invalidation by flag-key prefix or versioning, move
-the API to TypeScript with shared schemas, add audit events, and evolve SDK
-evaluation toward local snapshots or polling instead of one HTTP request per
-flag check.
+The strongest next improvements are: move the API to TypeScript with shared
+schemas, add environments, add audit events, and evolve SDK evaluation toward
+local snapshots or polling instead of one HTTP request per flag check.

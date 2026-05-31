@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { toast } from 'react-hot-toast';
+import { type FeatureFlag } from '../lib/api';
 
 interface CreateFlagModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onCreate: (newFlag: any) => void;
-  apiCall: (data: { key: string; description: string }) => Promise<any>;
+  onCreate: (newFlag: FeatureFlag) => void;
+  apiCall: (data: { key: string; description: string }) => Promise<FeatureFlag>;
 }
 
 export default function CreateFlagModal({ isOpen, onClose, onCreate, apiCall }: CreateFlagModalProps) {
@@ -29,9 +30,10 @@ export default function CreateFlagModal({ isOpen, onClose, onCreate, apiCall }: 
       onClose();
       setKey('');
       setDescription('');
-    } catch (err: any) {
-      setError(err.message || 'An unknown error occurred.');
-      toast.error(err.message || 'Failed to create flag.');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'An unknown error occurred.';
+      setError(message);
+      toast.error(message || 'Failed to create flag.');
     } finally {
       setIsCreating(false);
     }
