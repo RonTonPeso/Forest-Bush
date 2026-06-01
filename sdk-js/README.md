@@ -9,7 +9,6 @@ This SDK is designed to be lightweight and work in both Node.js and browser envi
 ```bash
 npm install @forest-bush/sdk-js
 ```
-*(Note: This package is not yet published to npm. This is the command you would run once it is.)*
 
 ## Usage
 

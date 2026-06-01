@@ -282,8 +282,9 @@ const enabled = await forestBush.evaluate(
 );
 ```
 
-The SDK package metadata is prepared as `@forest-bush/sdk-js`, but the package
-is not currently published to npm. Node, React, and Next.js examples live under
+The SDK is published to npm as `@forest-bush/sdk-js`. New versions are released
+by publishing a GitHub Release tagged `sdk-v*`, which triggers
+`.github/workflows/publish-sdk.yml`. Node, React, and Next.js examples live under
 `sdk-js/examples/`.
 
 ## Deployment
@@ -368,7 +369,8 @@ feature-flag rows between tests, and uses an in-memory Redis adapter.
   evaluation for a sample `userId`.
 - [x] Add an admin UI deployment workflow.
 - [x] Add examples for Node, React, and Next.js.
-- Publish the SDK package.
+- [x] Publish the SDK package (`@forest-bush/sdk-js` on npm; releases via the
+  `sdk-v*` tag workflow).
 
 ### Phase 3: Make It Distinctive
 
