@@ -15,7 +15,8 @@ datasource db {
 
 model FeatureFlag {
   id          String   @id @default(cuid())
-  key         String   @unique
+  key         String
+  environment String  @default("production")
   description String?
   enabled     Boolean  @default(false)
 
@@ -26,4 +27,19 @@ model FeatureFlag {
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@unique([key, environment])
+}
+
+model AuditEvent {
+  id          String   @id @default(cuid())
+  flagKey     String
+  environment String
+  action      String
+  actor       String
+  before      Json?
+  after       Json?
+  createdAt   DateTime @default(now())
+
+  @@index([flagKey, environment, createdAt])
 }

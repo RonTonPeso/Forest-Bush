@@ -52,6 +52,7 @@ describe('flag evaluation', () => {
 
   beforeEach(async () => {
     ({ app, prisma, redis } = createTestServer());
+    await prisma.auditEvent.deleteMany();
     await prisma.featureFlag.deleteMany();
     redis.clear();
   });
@@ -172,6 +173,43 @@ describe('flag evaluation', () => {
     });
   });
 
+  it('evaluates the requested environment and defaults to production', async () => {
+    await prisma.featureFlag.createMany({
+      data: [
+        {
+          key: 'environmental-flag',
+          environment: 'production',
+          enabled: false,
+          rules: {},
+        },
+        {
+          key: 'environmental-flag',
+          environment: 'staging',
+          enabled: true,
+          rules: {},
+        },
+      ],
+    });
+
+    const production = await request(app).get('/flags/environmental-flag').expect(200);
+    const staging = await request(app).get('/flags/environmental-flag?environment=staging').expect(200);
+
+    expect(production.body).toEqual({
+      key: 'environmental-flag',
+      enabled: false,
+      reason: 'disabled',
+    });
+    expect(staging.body).toEqual({
+      key: 'environmental-flag',
+      enabled: true,
+      reason: 'enabled',
+    });
+  });
+
+  it('rejects invalid public evaluation environments', async () => {
+    await request(app).get('/flags/any-flag?environment=qa').expect(400);
+  });
+
   it('uses versioned cache keys after an admin update', async () => {
     await prisma.featureFlag.create({
       data: {
@@ -197,6 +235,52 @@ describe('flag evaluation', () => {
       reason: 'disabled',
     });
   });
+
+  it('keeps cache versions isolated by environment', async () => {
+    await prisma.featureFlag.createMany({
+      data: [
+        {
+          key: 'cached-by-environment',
+          environment: 'production',
+          enabled: true,
+          rules: {},
+        },
+        {
+          key: 'cached-by-environment',
+          environment: 'staging',
+          enabled: true,
+          rules: {},
+        },
+      ],
+    });
+
+    await request(app).get('/flags/cached-by-environment?environment=production&userId=user-1').expect(200);
+    await request(app).get('/flags/cached-by-environment?environment=staging&userId=user-1').expect(200);
+
+    await request(app)
+      .put('/admin/flags/cached-by-environment?environment=staging')
+      .set('x-api-key', ADMIN_API_KEY)
+      .send({ enabled: false })
+      .expect(200);
+
+    const production = await request(app)
+      .get('/flags/cached-by-environment?environment=production&userId=user-1')
+      .expect(200);
+    const staging = await request(app)
+      .get('/flags/cached-by-environment?environment=staging&userId=user-1')
+      .expect(200);
+
+    expect(production.body).toEqual({
+      key: 'cached-by-environment',
+      enabled: true,
+      reason: 'enabled',
+    });
+    expect(staging.body).toEqual({
+      key: 'cached-by-environment',
+      enabled: false,
+      reason: 'disabled',
+    });
+  });
 });
 
 describe('admin flag routes', () => {
@@ -206,6 +290,7 @@ describe('admin flag routes', () => {
 
   beforeEach(async () => {
     ({ app, prisma, redis } = createTestServer());
+    await prisma.auditEvent.deleteMany();
     await prisma.featureFlag.deleteMany();
     redis.clear();
   });
@@ -233,6 +318,41 @@ describe('admin flag routes', () => {
       .expect(201);
 
     expect(response.body.rules).toEqual({ rolloutPercentage: 25 });
+    expect(response.body.environment).toBe('production');
+  });
+
+  it('allows the same flag key in different environments', async () => {
+    await request(app)
+      .post('/admin/flags')
+      .set('x-api-key', ADMIN_API_KEY)
+      .send({
+        key: 'shared-key',
+        environment: 'production',
+        enabled: false,
+      })
+      .expect(201);
+
+    await request(app)
+      .post('/admin/flags')
+      .set('x-api-key', ADMIN_API_KEY)
+      .send({
+        key: 'shared-key',
+        environment: 'staging',
+        enabled: true,
+      })
+      .expect(201);
+
+    const production = await request(app)
+      .get('/admin/flags/shared-key?environment=production')
+      .set('x-api-key', ADMIN_API_KEY)
+      .expect(200);
+    const staging = await request(app)
+      .get('/admin/flags/shared-key?environment=staging')
+      .set('x-api-key', ADMIN_API_KEY)
+      .expect(200);
+
+    expect(production.body.enabled).toBe(false);
+    expect(staging.body.enabled).toBe(true);
   });
 
   it('rejects invalid rollout values on update', async () => {
@@ -250,6 +370,90 @@ describe('admin flag routes', () => {
       .send({ rules: { rolloutPercentage: 101 } })
       .expect(400);
   });
+
+  it('records audit events for create, update, toggle, and delete', async () => {
+    await request(app)
+      .post('/admin/flags')
+      .set('x-api-key', ADMIN_API_KEY)
+      .send({
+        key: 'audited-flag',
+        enabled: true,
+        rules: { rolloutPercentage: 25 },
+      })
+      .expect(201);
+
+    await request(app)
+      .put('/admin/flags/audited-flag')
+      .set('x-api-key', ADMIN_API_KEY)
+      .send({ rules: { rolloutPercentage: 50 } })
+      .expect(200);
+
+    await request(app)
+      .put('/admin/flags/audited-flag')
+      .set('x-api-key', ADMIN_API_KEY)
+      .send({ enabled: false })
+      .expect(200);
+
+    await request(app)
+      .delete('/admin/flags/audited-flag')
+      .set('x-api-key', ADMIN_API_KEY)
+      .expect(204);
+
+    const response = await request(app)
+      .get('/admin/flags/audited-flag/audit')
+      .set('x-api-key', ADMIN_API_KEY)
+      .expect(200);
+
+    expect(response.body.map((event) => event.action)).toEqual(['delete', 'toggle', 'update', 'create']);
+    expect(response.body.every((event) => event.actor === 'admin-api-key')).toBe(true);
+    expect(response.body[0].before.key).toBe('audited-flag');
+    expect(response.body[0].after).toBeNull();
+    expect(response.body[3].before).toBeNull();
+    expect(response.body[3].after.key).toBe('audited-flag');
+  });
+
+  it('keeps audit events isolated by environment', async () => {
+    await request(app)
+      .post('/admin/flags')
+      .set('x-api-key', ADMIN_API_KEY)
+      .send({
+        key: 'environment-audit',
+        environment: 'production',
+      })
+      .expect(201);
+
+    await request(app)
+      .post('/admin/flags')
+      .set('x-api-key', ADMIN_API_KEY)
+      .send({
+        key: 'environment-audit',
+        environment: 'staging',
+      })
+      .expect(201);
+
+    await request(app)
+      .put('/admin/flags/environment-audit?environment=staging')
+      .set('x-api-key', ADMIN_API_KEY)
+      .send({ enabled: true })
+      .expect(200);
+
+    const production = await request(app)
+      .get('/admin/flags/environment-audit/audit?environment=production')
+      .set('x-api-key', ADMIN_API_KEY)
+      .expect(200);
+    const staging = await request(app)
+      .get('/admin/flags/environment-audit/audit?environment=staging')
+      .set('x-api-key', ADMIN_API_KEY)
+      .expect(200);
+
+    expect(production.body.map((event) => event.action)).toEqual(['create']);
+    expect(staging.body.map((event) => event.action)).toEqual(['toggle', 'create']);
+  });
+
+  it('requires x-api-key for audit routes', async () => {
+    await request(app).get('/admin/flags/any-flag/audit').expect(401);
+    await request(app).get('/admin/flags/any-flag/audit').set('x-api-key', 'wrong-key').expect(403);
+  });
 });
 
 describe('redis disabled mode', () => {
@@ -259,6 +463,7 @@ describe('redis disabled mode', () => {
 
   beforeEach(async () => {
     ({ app, prisma, redis } = createTestServer(createNoopRedisClient()));
+    await prisma.auditEvent.deleteMany();
     await prisma.featureFlag.deleteMany();
   });
 

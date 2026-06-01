@@ -5,14 +5,15 @@ const cors = require('cors');
 const crypto = require('crypto');
 
 const { createAdminFlagsRouter } = require('./routes/adminFlags');
+const { DEFAULT_ENVIRONMENT, parseEnvironment } = require('./schemas/flagSchemas');
 
-const getFlagVersion = async (redis, key, logger = console) => {
+const getFlagVersion = async (redis, key, environment = DEFAULT_ENVIRONMENT, logger = console) => {
   if (redis?.disabled) return '0';
 
   try {
-    return (await redis.get(`flag-version:${key}`)) || '0';
+    return (await redis.get(`flag-version:${environment}:${key}`)) || '0';
   } catch (error) {
-    logger.warn(`cache version read failed for flag '${key}':`, error.message);
+    logger.warn(`cache version read failed for flag '${environment}/${key}':`, error.message);
     return '0';
   }
 };
@@ -97,10 +98,17 @@ const createApp = ({ prisma, redis, adminApiKey, logger = console } = {}) => {
   app.get('/flags/:key', async (req, res) => {
     const { key } = req.params;
     const userId = typeof req.query.userId === 'string' ? req.query.userId : undefined;
+    const environmentResult = parseEnvironment(req.query.environment);
+
+    if (!environmentResult.success) {
+      return res.status(400).json({ message: environmentResult.error });
+    }
+
+    const { environment } = environmentResult;
 
     try {
-      const version = await getFlagVersion(redis, key, logger);
-      const cacheKey = `flag:${key}:v${version}:${userId || 'anonymous'}`;
+      const version = await getFlagVersion(redis, key, environment, logger);
+      const cacheKey = `flag:${environment}:${key}:v${version}:${userId || 'anonymous'}`;
 
       try {
         if (!redis?.disabled && redis.status === 'ready') {
@@ -116,7 +124,12 @@ const createApp = ({ prisma, redis, adminApiKey, logger = console } = {}) => {
       logger.log(`[cache miss] for key: ${cacheKey}`);
 
       const flag = await prisma.featureFlag.findUnique({
-        where: { key },
+        where: {
+          key_environment: {
+            key,
+            environment,
+          },
+        },
       });
 
       const result = evaluateFlag({ flag, key, userId });
