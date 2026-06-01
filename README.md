@@ -4,7 +4,7 @@ Forest Bush is a self-hosted feature flag service. The current repository is a
 working MVP with a Node/Express API, PostgreSQL persistence through Prisma,
 Redis-backed evaluation caching, a React admin dashboard, a small JavaScript SDK,
 Fly.io deployment files, Terraform configuration, and a GitHub Actions deploy
-workflow for the API.
+workflow for the API and admin UI.
 
 The product is focused on a simple loop:
 
@@ -18,6 +18,7 @@ The product is focused on a simple loop:
 - Admin CRUD endpoints under `/admin/flags`
 - API-key protection for admin endpoints with the `x-api-key` header
 - Boolean flag enable/disable state
+- Development, staging, and production flag environments
 - Percentage rollout rule support with stable hashing when `userId` is supplied
 - Redis result caching for public flag evaluations
 - PostgreSQL storage for flag metadata and JSON rules
@@ -25,7 +26,8 @@ The product is focused on a simple loop:
 - TypeScript JS SDK with optional in-memory client-side caching
 - Dockerfiles and Fly.io configuration for both API and admin UI
 - Terraform Cloud configuration for the Fly.io API app and API secrets
-- GitHub Actions workflow that deploys the API to Fly.io on pushes to `main`
+- GitHub Actions workflow that deploys the API and admin UI to Fly.io on pushes
+  to `main`
 
 ## Product Direction
 
@@ -36,14 +38,10 @@ and enough operational visibility to understand flag changes.
 
 The next version should prioritize depth over breadth:
 
-- Correct flag evaluation across API, admin UI, and SDK
-- Environment-aware flags for development, staging, and production
 - Audit history for every flag change
 - A flag detail page with rule editing and test evaluation
 - SDK polling or local snapshots so applications are not dependent on one API
   request per flag check
-- Integration tests for the critical evaluation and admin paths
-- Admin UI deployment through GitHub Actions
 
 ## Intentional Non-Goals For Now
 
@@ -60,7 +58,7 @@ can feel complete instead of broad and shallow:
 
 If the core flag platform becomes reliable and polished, the most likely future
 expansion paths are advanced targeting or lightweight experimentation. Those
-should come after environments, audit logs, tests, and SDK behavior are solid.
+should come after audit logs, flag detail workflows, and SDK behavior are solid.
 
 ## Architecture
 
@@ -91,7 +89,7 @@ React admin UI on Fly.io
 ├── admin-ui/             # React + TypeScript + Vite admin dashboard
 ├── sdk-js/               # TypeScript JavaScript SDK
 ├── infra/terraform/      # Terraform Cloud/Fly.io app and secret configuration
-├── .github/workflows/    # API deployment workflow
+├── .github/workflows/    # API and admin UI deployment workflow
 ├── index.html            # Root HTML shell from the UI template
 └── README.md
 ```
@@ -144,12 +142,14 @@ Checks PostgreSQL and Redis connectivity.
 ```http
 GET /flags/:key
 GET /flags/:key?userId=user-123
+GET /flags/:key?environment=staging&userId=user-123
 ```
 
 Evaluates a flag. If `userId` is supplied, percentage rollouts are sticky for
-that user because evaluation hashes `flagKey:userId`. Percentage rollout rules
-require `userId`; anonymous percentage evaluations return disabled with
-`reason: "context_required"`.
+that user because evaluation hashes `flagKey:userId`. `environment` defaults to
+`production`; supported values are `development`, `staging`, and `production`.
+Percentage rollout rules require `userId`; anonymous percentage evaluations
+return disabled with `reason: "context_required"`.
 
 Example response:
 
@@ -177,6 +177,7 @@ Content-Type: application/json
 
 {
   "key": "new-checkout-flow",
+  "environment": "production",
   "description": "Controls the new checkout experience",
   "enabled": true,
   "rules": {
@@ -189,18 +190,28 @@ List flags:
 
 ```http
 GET /admin/flags
+GET /admin/flags?environment=staging
 ```
 
 Get one flag:
 
 ```http
 GET /admin/flags/:key
+GET /admin/flags/:key?environment=staging
+```
+
+Get recent audit events for one flag:
+
+```http
+GET /admin/flags/:key/audit
+GET /admin/flags/:key/audit?environment=staging
 ```
 
 Update a flag:
 
 ```http
 PUT /admin/flags/:key
+PUT /admin/flags/:key?environment=staging
 Content-Type: application/json
 
 {
@@ -215,13 +226,16 @@ Delete a flag:
 
 ```http
 DELETE /admin/flags/:key
+DELETE /admin/flags/:key?environment=staging
 ```
 
 ## Admin UI
 
 The admin UI is a React 18, Vite, TypeScript, Tailwind, and lucide-react
 application. It stores the admin API key in `localStorage`, verifies it by
-calling `GET /admin/flags`, and then uses it for flag management requests.
+calling `GET /admin/flags`, and then uses it for flag management requests. The
+dashboard supports environment-specific flag lists and a flag detail view with
+rollout editing, test evaluation, and recent audit history.
 
 ### Local Development
 
@@ -257,6 +271,7 @@ import { ForestBushClient } from '@forest-bush/sdk-js';
 
 const forestBush = new ForestBushClient({
   host: 'https://forest-bush.fly.dev',
+  environment: 'production',
   cacheTTL: 30,
 });
 
@@ -268,7 +283,8 @@ const enabled = await forestBush.evaluate(
 ```
 
 The SDK package metadata is prepared as `@forest-bush/sdk-js`, but the package
-is not currently published to npm.
+is not currently published to npm. Node, React, and Next.js examples live under
+`sdk-js/examples/`.
 
 ## Deployment
 
@@ -278,8 +294,8 @@ The API has:
 
 - `api/Dockerfile`
 - `api/fly.toml` for the `forest-bush` Fly.io app
-- `.github/workflows/fly-deploy.yml`, which deploys `api/` to Fly.io on pushes
-  to `main`
+- `.github/workflows/fly-deploy.yml`, which deploys `api/` and `admin-ui/` to
+  Fly.io on pushes to `main`
 
 Required Fly secrets:
 
@@ -294,7 +310,8 @@ The admin UI has:
 - `admin-ui/Dockerfile`
 - `admin-ui/fly.toml` for the `forest-bush-ui` Fly.io app
 
-There is not currently a GitHub Actions workflow for deploying the admin UI.
+The shared GitHub Actions workflow deploys the admin UI to the `forest-bush-ui`
+Fly.io app after checks pass.
 
 ### Terraform
 
@@ -344,13 +361,14 @@ feature-flag rows between tests, and uses an in-memory Redis adapter.
 
 ### Phase 2: Complete The Core Product
 
-- Add environments so flags can differ between development, staging, and
+- [x] Add environments so flags can differ between development, staging, and
   production.
-- Add audit events for every flag create, update, toggle, and delete.
-- Add a flag detail page with editable rules, recent history, and test
+- [x] Add audit events for every flag create, update, toggle, and delete.
+- [x] Add a flag detail page with editable rules, recent history, and test
   evaluation for a sample `userId`.
-- Add an admin UI deployment workflow.
-- Publish the SDK package and add examples for Node, React, and Next.js.
+- [x] Add an admin UI deployment workflow.
+- [x] Add examples for Node, React, and Next.js.
+- Publish the SDK package.
 
 ### Phase 3: Make It Distinctive
 
