@@ -456,6 +456,77 @@ describe('admin flag routes', () => {
   });
 });
 
+describe('environment snapshot', () => {
+  let app;
+  let prisma;
+  let redis;
+
+  beforeEach(async () => {
+    ({ app, prisma, redis } = createTestServer());
+    await prisma.auditEvent.deleteMany();
+    await prisma.featureFlag.deleteMany();
+    redis.clear();
+  });
+
+  afterEach(async () => {
+    await prisma.$disconnect();
+    redis.quit();
+  });
+
+  it('returns an empty snapshot for an environment with no flags', async () => {
+    const response = await request(app).get('/environments/production/snapshot').expect(200);
+
+    expect(response.body).toMatchObject({
+      environment: 'production',
+      flags: [],
+    });
+    expect(response.body.checksum).toEqual(expect.any(String));
+    expect(response.body.version).toBe(response.body.checksum.substring(0, 12));
+    expect(response.body.generatedAt).toEqual(expect.any(String));
+  });
+
+  it('includes only the requested environment, sorted by key', async () => {
+    await prisma.featureFlag.createMany({
+      data: [
+        { key: 'beta-flag', environment: 'production', enabled: true, rules: { rolloutPercentage: 25 } },
+        { key: 'alpha-flag', environment: 'production', enabled: false, rules: {} },
+        { key: 'staging-only', environment: 'staging', enabled: true, rules: {} },
+      ],
+    });
+
+    const response = await request(app).get('/environments/production/snapshot').expect(200);
+
+    expect(response.body.flags).toEqual([
+      { key: 'alpha-flag', enabled: false, rules: {} },
+      { key: 'beta-flag', enabled: true, rules: { rolloutPercentage: 25 } },
+    ]);
+  });
+
+  it('produces a stable checksum across calls and changes it after a mutation', async () => {
+    await prisma.featureFlag.create({
+      data: { key: 'snapshot-flag', environment: 'production', enabled: true, rules: {} },
+    });
+
+    const first = await request(app).get('/environments/production/snapshot').expect(200);
+    const second = await request(app).get('/environments/production/snapshot').expect(200);
+    expect(second.body.checksum).toBe(first.body.checksum);
+
+    await request(app)
+      .put('/admin/flags/snapshot-flag')
+      .set('x-api-key', ADMIN_API_KEY)
+      .send({ enabled: false })
+      .expect(200);
+
+    const afterMutation = await request(app).get('/environments/production/snapshot').expect(200);
+    expect(afterMutation.body.checksum).not.toBe(first.body.checksum);
+    expect(afterMutation.body.flags[0].enabled).toBe(false);
+  });
+
+  it('rejects invalid snapshot environments', async () => {
+    await request(app).get('/environments/qa/snapshot').expect(400);
+  });
+});
+
 describe('redis disabled mode', () => {
   let app;
   let prisma;

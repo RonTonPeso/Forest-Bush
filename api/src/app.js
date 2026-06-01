@@ -18,6 +18,39 @@ const getFlagVersion = async (redis, key, environment = DEFAULT_ENVIRONMENT, log
   }
 };
 
+// Environment-level version counter, bumped on any admin mutation so cached
+// snapshots invalidate. Mirrors getFlagVersion but scoped to the whole env.
+const getEnvironmentVersion = async (redis, environment, logger = console) => {
+  if (redis?.disabled) return '0';
+
+  try {
+    return (await redis.get(`env-version:${environment}`)) || '0';
+  } catch (error) {
+    logger.warn(`env version read failed for '${environment}':`, error.message);
+    return '0';
+  }
+};
+
+// Builds a deterministic snapshot of every flag in an environment. The flag
+// list is projected and sorted by key so the checksum is stable across calls;
+// version is a short prefix of that checksum. generatedAt is informational and
+// does not affect the checksum.
+const buildSnapshot = (flags, environment) => {
+  const projected = flags
+    .map((flag) => ({ key: flag.key, enabled: flag.enabled, rules: flag.rules ?? null }))
+    .sort((a, b) => a.key.localeCompare(b.key));
+
+  const checksum = crypto.createHash('sha256').update(JSON.stringify(projected)).digest('hex');
+
+  return {
+    environment,
+    version: checksum.substring(0, 12),
+    generatedAt: new Date().toISOString(),
+    checksum,
+    flags: projected,
+  };
+};
+
 const evaluateFlag = ({ flag, key, userId }) => {
   if (!flag) {
     return { key, enabled: false, reason: 'not_found' };
@@ -149,9 +182,53 @@ const createApp = ({ prisma, redis, adminApiKey, logger = console } = {}) => {
     }
   });
 
+  // Returns a versioned snapshot of all flags in an environment so SDKs can
+  // evaluate locally instead of one HTTP request per flag.
+  app.get('/environments/:envKey/snapshot', async (req, res) => {
+    const environmentResult = parseEnvironment(req.params.envKey);
+
+    if (!environmentResult.success) {
+      return res.status(400).json({ message: environmentResult.error });
+    }
+
+    const { environment } = environmentResult;
+
+    try {
+      const version = await getEnvironmentVersion(redis, environment, logger);
+      const cacheKey = `snapshot:${environment}:v${version}`;
+
+      try {
+        if (!redis?.disabled && redis.status === 'ready') {
+          const cached = await redis.get(cacheKey);
+          if (cached) {
+            return res.status(200).json(JSON.parse(cached));
+          }
+        }
+      } catch (cacheError) {
+        logger.warn(`snapshot cache read failed for ${cacheKey}:`, cacheError.message);
+      }
+
+      const flags = await prisma.featureFlag.findMany({ where: { environment } });
+      const snapshot = buildSnapshot(flags, environment);
+
+      try {
+        if (!redis?.disabled && redis.status === 'ready') {
+          await redis.set(cacheKey, JSON.stringify(snapshot), 'EX', 60);
+        }
+      } catch (cacheError) {
+        logger.warn(`snapshot cache write failed for ${cacheKey}:`, cacheError.message);
+      }
+
+      return res.status(200).json(snapshot);
+    } catch (error) {
+      logger.error(`error building snapshot for '${environment}':`, error);
+      return res.status(500).json({ message: 'error building snapshot' });
+    }
+  });
+
   app.use('/admin/flags', createAdminFlagsRouter({ prisma, redis, adminApiKey, logger }));
 
   return app;
 };
 
-module.exports = { createApp, evaluateFlag, getFlagVersion };
+module.exports = { createApp, evaluateFlag, getFlagVersion, buildSnapshot };

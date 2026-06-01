@@ -161,6 +161,28 @@ Example response:
 }
 ```
 
+```http
+GET /environments/:envKey/snapshot
+```
+
+Returns a versioned snapshot of every flag in an environment so SDKs can
+evaluate locally instead of making one request per flag check. `envKey` must be
+`development`, `staging`, or `production`. The `checksum` (and the `version`
+prefix derived from it) is content based and stable until a flag in the
+environment changes; `generatedAt` is informational.
+
+```json
+{
+  "environment": "production",
+  "version": "9f2a1c4e0b7d",
+  "generatedAt": "2026-06-01T00:00:00.000Z",
+  "checksum": "9f2a1c4e0b7d...",
+  "flags": [
+    { "key": "new-checkout-flow", "enabled": true, "rules": { "rolloutPercentage": 25 } }
+  ]
+}
+```
+
 ### Admin Endpoints
 
 All admin requests require:

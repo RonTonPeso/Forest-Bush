@@ -12,6 +12,18 @@ const incrementFlagVersion = async (redis, key, environment, logger = console) =
   }
 };
 
+// Bumps the environment-level version so cached snapshots invalidate after a
+// mutation. Pairs with incrementFlagVersion on every create/update/delete.
+const incrementEnvironmentVersion = async (redis, environment, logger = console) => {
+  try {
+    if (!redis?.disabled) {
+      await redis.incr(`env-version:${environment}`);
+    }
+  } catch (error) {
+    logger.warn(`env version increment failed for '${environment}':`, error.message);
+  }
+};
+
 const getEnvironmentOrRespond = (req, res) => {
   const result = parseEnvironment(req.query.environment);
 
@@ -95,6 +107,7 @@ const createAdminFlagsRouter = ({ prisma, redis, adminApiKey, logger = console }
       });
 
       await incrementFlagVersion(redis, key, environment, logger);
+      await incrementEnvironmentVersion(redis, environment, logger);
       res.status(201).json(newFlag);
     } catch (error) {
       if (error.code === 'P2002') {
@@ -247,6 +260,7 @@ const createAdminFlagsRouter = ({ prisma, redis, adminApiKey, logger = console }
       }
 
       await incrementFlagVersion(redis, key, environment, logger);
+      await incrementEnvironmentVersion(redis, environment, logger);
 
       res.status(200).json(updatedFlag);
     } catch (error) {
@@ -305,6 +319,7 @@ const createAdminFlagsRouter = ({ prisma, redis, adminApiKey, logger = console }
       }
 
       await incrementFlagVersion(redis, key, environment, logger);
+      await incrementEnvironmentVersion(redis, environment, logger);
 
       res.status(204).send();
     } catch (error) {
