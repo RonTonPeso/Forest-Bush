@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { toast } from 'react-hot-toast';
-import { Pencil, Trash2 } from 'lucide-react';
-import { useAuth } from './Auth';
+import { Eye, Trash2 } from 'lucide-react';
+import { useAuth } from '../lib/authContext';
 import ToggleSwitch from './ToggleSwitch';
 import { apiClient, type FeatureFlag } from '../lib/api';
 
 interface FlagListItemProps {
   flag: FeatureFlag;
   onUpdate: (updatedFlag: FeatureFlag) => void;
-  onDelete: (key: string) => void;
+  onDelete: (key: string, environment: FeatureFlag['environment']) => void;
   onEdit: () => void;
 }
 
@@ -25,7 +25,7 @@ export default function FlagListItem({ flag, onUpdate, onDelete, onEdit }: FlagL
     try {
       const updatedFlag = await apiClient.updateFlag(apiKey, flag.key, {
         enabled: newEnabledState,
-      });
+      }, flag.environment);
       onUpdate(updatedFlag);
       toast.success(`Flag "${flag.key}" ${newEnabledState ? 'enabled' : 'disabled'}.`);
     } catch {
@@ -43,8 +43,8 @@ export default function FlagListItem({ flag, onUpdate, onDelete, onEdit }: FlagL
     if (window.confirm(`Are you sure you want to delete the flag "${flag.key}"? This cannot be undone.`)) {
       setIsUpdating(true);
       try {
-        await apiClient.deleteFlag(apiKey, flag.key);
-        onDelete(flag.key);
+        await apiClient.deleteFlag(apiKey, flag.key, flag.environment);
+        onDelete(flag.key, flag.environment);
         toast.success(`Flag "${flag.key}" deleted.`);
       } catch {
         toast.error('Failed to delete flag. Please try again.');
@@ -67,9 +67,9 @@ export default function FlagListItem({ flag, onUpdate, onDelete, onEdit }: FlagL
             onClick={onEdit}
             disabled={isUpdating}
             className="p-2 text-gray-400 hover:text-white transition-colors disabled:opacity-50"
-            aria-label="Edit flag"
+            aria-label="View flag details"
           >
-            <Pencil size={18} />
+            <Eye size={18} />
           </button>
           <button
             onClick={handleDelete}
@@ -82,7 +82,7 @@ export default function FlagListItem({ flag, onUpdate, onDelete, onEdit }: FlagL
         </div>
       </div>
       <div className="text-xs text-gray-500 mt-2">
-        Rollout: {flag.rules?.rolloutPercentage ?? 0}%
+        Environment: {flag.environment} | Rollout: {flag.rules?.rolloutPercentage ?? 0}%
       </div>
     </div>
   );

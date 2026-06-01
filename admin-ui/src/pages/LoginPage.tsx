@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useAuth } from '../components/Auth';
+import { useAuth } from '../lib/authContext';
 import { apiClient } from '../lib/api';
 import { Lock, LogIn } from 'lucide-react';
 

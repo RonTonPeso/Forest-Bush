@@ -1,15 +1,16 @@
 import { useState } from 'react';
 import { toast } from 'react-hot-toast';
-import { type FeatureFlag } from '../lib/api';
+import { type Environment, type FeatureFlag } from '../lib/api';
 
 interface CreateFlagModalProps {
   isOpen: boolean;
   onClose: () => void;
   onCreate: (newFlag: FeatureFlag) => void;
+  environment: Environment;
   apiCall: (data: { key: string; description: string }) => Promise<FeatureFlag>;
 }
 
-export default function CreateFlagModal({ isOpen, onClose, onCreate, apiCall }: CreateFlagModalProps) {
+export default function CreateFlagModal({ isOpen, onClose, onCreate, environment, apiCall }: CreateFlagModalProps) {
   const [key, setKey] = useState('');
   const [description, setDescription] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -46,7 +47,8 @@ export default function CreateFlagModal({ isOpen, onClose, onCreate, apiCall }: 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
       <div className="bg-gray-800 p-8 rounded-lg shadow-2xl max-w-md w-full">
-        <h2 className="text-2xl font-bold text-white mb-6">Create New Feature Flag</h2>
+        <h2 className="text-2xl font-bold text-white mb-2">Create New Feature Flag</h2>
+        <p className="text-gray-400 mb-6">Environment: {environment}</p>
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
             <label htmlFor="key" className="block text-gray-300 font-bold mb-2">

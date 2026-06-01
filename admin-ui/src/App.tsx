@@ -1,4 +1,4 @@
-import { useAuth } from './components/Auth';
+import { useAuth } from './lib/authContext';
 import DashboardPage from './pages/DashboardPage';
 import LoginPage from './pages/LoginPage';
 import { Toaster } from 'react-hot-toast';

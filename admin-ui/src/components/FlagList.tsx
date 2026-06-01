@@ -4,7 +4,7 @@ import FlagListItem from './FlagListItem';
 interface FlagListProps {
   flags: FeatureFlag[];
   onUpdate: (updatedFlag: FeatureFlag) => void;
-  onDelete: (key: string) => void;
+  onDelete: (key: string, environment: FeatureFlag['environment']) => void;
   onEdit: (flag: FeatureFlag) => void;
 }
 
@@ -24,7 +24,7 @@ export default function FlagList({ flags, onUpdate, onDelete, onEdit }: FlagList
     <div className="space-y-4">
       {flags.map((flag) => (
         <FlagListItem
-          key={flag.key}
+          key={`${flag.environment}:${flag.key}`}
           flag={flag}
           onUpdate={onUpdate}
           onDelete={onDelete}

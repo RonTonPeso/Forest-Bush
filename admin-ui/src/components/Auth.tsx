@@ -1,12 +1,5 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
-
-interface AuthContextType {
-  apiKey: string | null;
-  login: (key: string) => void;
-  logout: () => void;
-}
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+import { useState, type ReactNode } from 'react';
+import { AuthContext } from '../lib/authContext';
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [apiKey, setApiKey] = useState<string | null>(() => {
@@ -28,12 +21,4 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       {children}
     </AuthContext.Provider>
   );
-};
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
 };
