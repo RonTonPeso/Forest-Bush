@@ -20,14 +20,21 @@ The product is focused on a simple loop:
 - Boolean flag enable/disable state
 - Development, staging, and production flag environments
 - Percentage rollout rule support with stable hashing when `userId` is supplied
-- Redis result caching for public flag evaluations
+- Audit history for every flag create, update, toggle, and delete, readable via
+  `GET /admin/flags/:key/audit`
+- Versioned environment snapshots at `GET /environments/:envKey/snapshot` for
+  local-first SDK evaluation
+- Redis result caching for public flag evaluations and snapshots
 - PostgreSQL storage for flag metadata and JSON rules
-- React/Vite admin UI for login, listing, creating, toggling, editing, and deleting flags
-- TypeScript JS SDK with optional in-memory client-side caching
+- React/Vite admin UI for login, listing, creating, toggling, editing, and
+  deleting flags, plus a flag detail page with rule editing, test evaluation,
+  and audit history
+- TypeScript JS SDK (published to npm) with optional in-memory caching and an
+  opt-in local snapshot mode with background polling and offline fallback
 - Dockerfiles and Fly.io configuration for both API and admin UI
 - Terraform Cloud configuration for the Fly.io API app and API secrets
-- GitHub Actions workflow that deploys the API and admin UI to Fly.io on pushes
-  to `main`
+- GitHub Actions workflows that deploy the API and admin UI to Fly.io on pushes
+  to `main`, and publish the SDK to npm on `sdk-v*` releases
 
 ## Product Direction
 
@@ -36,12 +43,14 @@ goal is a complete, self-hosted feature flag platform for small teams: safe
 rollouts, clear admin workflows, trustworthy evaluation behavior, useful SDKs,
 and enough operational visibility to understand flag changes.
 
-The next version should prioritize depth over breadth:
+The original depth-over-breadth goals are now in place: audit history for every
+flag change, a flag detail page with rule editing and test evaluation, and an
+SDK that can evaluate locally from polled snapshots instead of one API request
+per flag check. The remaining direction is explainability and targeting:
 
-- Audit history for every flag change
-- A flag detail page with rule editing and test evaluation
-- SDK polling or local snapshots so applications are not dependent on one API
-  request per flag check
+- Evaluation traces that explain why a user received a flag value
+- Bootstrap values and signed snapshots for stricter local/offline use
+- Simple user-attribute targeting and reusable segments
 
 ## Intentional Non-Goals For Now
 
@@ -87,9 +96,9 @@ React admin UI on Fly.io
 .
 ├── api/                  # Express API, Prisma schema, Dockerfile, Fly config
 ├── admin-ui/             # React + TypeScript + Vite admin dashboard
-├── sdk-js/               # TypeScript JavaScript SDK
+├── sdk-js/               # TypeScript JavaScript SDK and usage examples
 ├── infra/terraform/      # Terraform Cloud/Fly.io app and secret configuration
-├── .github/workflows/    # API and admin UI deployment workflow
+├── .github/workflows/    # Fly.io deploy and SDK npm publish workflows
 ├── index.html            # Root HTML shell from the UI template
 └── README.md
 ```
@@ -304,10 +313,29 @@ const enabled = await forestBush.evaluate(
 );
 ```
 
+By default the client evaluates remotely, one request per check. Set
+`mode: 'local'` to poll an environment snapshot in the background and evaluate
+flags locally with no per-check request. Local evaluation uses the same rollout
+hashing as the API, keeps serving the last good snapshot if a refresh fails, and
+returns the caller's default until the first snapshot loads:
+
+```ts
+const forestBush = new ForestBushClient({
+  host: 'https://forest-bush.fly.dev',
+  environment: 'production',
+  mode: 'local',
+  pollIntervalSeconds: 30,
+});
+
+await forestBush.start();
+const enabled = await forestBush.evaluate('new-checkout-flow', false, 'user-123');
+forestBush.stop();
+```
+
 The SDK is published to npm as `@forest-bush/sdk-js`. New versions are released
 by publishing a GitHub Release tagged `sdk-v*`, which triggers
-`.github/workflows/publish-sdk.yml`. Node, React, and Next.js examples live under
-`sdk-js/examples/`.
+`.github/workflows/publish-sdk.yml`. Node (remote and local), React, and Next.js
+examples live under `sdk-js/examples/`.
 
 ## Deployment
 
@@ -396,8 +424,9 @@ feature-flag rows between tests, and uses an in-memory Redis adapter.
 
 ### Phase 3: Make It Distinctive
 
-- Add SDK polling, bootstrap values, and offline fallback behavior.
-- Add signed or versioned flag snapshots for fast local evaluation.
+- [x] Add versioned environment snapshots for fast local evaluation.
+- [x] Add SDK polling and offline fallback behavior.
+- Add bootstrap values and signed snapshots for stricter local/offline use.
 - Add evaluation traces that explain why a user received a flag value.
 - Add simple user-attribute targeting and reusable segments only after the core
   experience is stable.
