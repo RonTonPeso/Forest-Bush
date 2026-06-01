@@ -1,0 +1,38 @@
+name: Publish SDK
+
+# Publishes @forest-bush/sdk-js to npm when a release tagged sdk-v* is
+# created. The real publish only runs on the release event, so normal
+# pushes never reach the registry.
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    name: Build and publish to npm
+    runs-on: ubuntu-latest
+    if: startsWith(github.event.release.tag_name, 'sdk-v')
+    defaults:
+      run:
+        working-directory: ./sdk-js
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish
