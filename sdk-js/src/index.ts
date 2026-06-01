@@ -4,6 +4,11 @@
 export interface ForestBushClientConfig {
   host: string; // the base url of the forest bush api (e.g., 'https://forest-bush.fly.dev')
   /**
+   * The default flag environment.
+   * Defaults to "production".
+   */
+  environment?: 'development' | 'staging' | 'production';
+  /**
    * The time-to-live for in-memory cache entries in seconds.
    * Defaults to 0 (caching disabled).
    */
@@ -34,6 +39,7 @@ export class ForestBushClient {
     }
     this.config = {
       cacheTTL: 0,
+      environment: 'production',
       ...config,
     };
   }
@@ -44,10 +50,16 @@ export class ForestBushClient {
    * @param key The unique key of the feature flag.
    * @param defaultValue The default value to return if the flag cannot be evaluated.
    * @param userId An optional user ID for consistent, "sticky" rollouts.
+   * @param environment An optional environment override.
    * @returns A promise that resolves to a boolean indicating if the feature is enabled.
    */
-  public async evaluate(key: string, defaultValue: boolean, userId?: string): Promise<boolean> {
-    const cacheKey = `${key}:${userId || ''}`;
+  public async evaluate(
+    key: string,
+    defaultValue: boolean,
+    userId?: string,
+    environment = this.config.environment || 'production'
+  ): Promise<boolean> {
+    const cacheKey = `${environment}:${key}:${userId || ''}`;
     const cacheTTL = this.config.cacheTTL || 0;
 
     // Check cache first if TTL is greater than 0
@@ -62,6 +74,7 @@ export class ForestBushClient {
     if (userId) {
       url.searchParams.append('userId', userId);
     }
+    url.searchParams.append('environment', environment);
 
     try {
       const response = await fetch(url.toString());
@@ -91,4 +104,4 @@ export class ForestBushClient {
   public clearCache(): void {
     this.cache.clear();
   }
-} 
+}

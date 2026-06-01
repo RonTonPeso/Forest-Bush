@@ -20,6 +20,7 @@ import { ForestBushClient } from '@forest-bush/sdk-js';
 
 const forestBush = new ForestBushClient({
   host: 'https://forest-bush.fly.dev', // your api host
+  environment: 'production',           // optional: defaults to production
 });
 
 // example usage in an async function
@@ -51,12 +52,21 @@ Creates a new client instance.
 -   `config` (`ForestBushClientConfig`):
     -   `host` (string, required): The base URL of your Forest Bush API.
 
-### `client.evaluate(key, defaultValue, userId)`
+### `client.evaluate(key, defaultValue, userId, environment)`
 
 Asynchronously evaluates a feature flag.
 
 -   `key` (string, required): The key of the flag to evaluate.
 -   `defaultValue` (boolean, required): The safe default value to return in case the API is unreachable or an error occurs.
 -   `userId` (string, optional): A unique identifier for the user. Providing this ensures that percentage-based rollouts are "sticky" for that user.
+-   `environment` (`development`, `staging`, or `production`, optional): Overrides the client's default environment for this evaluation.
 
-Returns a `Promise<boolean>` with the evaluated state of the flag. 
+Returns a `Promise<boolean>` with the evaluated state of the flag.
+
+## Examples
+
+Example usage lives in `examples/`:
+
+- `node.ts`
+- `react.tsx`
+- `nextjs.ts`
