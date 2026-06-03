@@ -152,6 +152,7 @@ Checks PostgreSQL and Redis connectivity.
 GET /flags/:key
 GET /flags/:key?userId=user-123
 GET /flags/:key?environment=staging&userId=user-123
+GET /flags/:key?userId=user-123&explain=true
 ```
 
 Evaluates a flag. If `userId` is supplied, percentage rollouts are sticky for
@@ -160,13 +161,37 @@ that user because evaluation hashes `flagKey:userId`. `environment` defaults to
 Percentage rollout rules require `userId`; anonymous percentage evaluations
 return disabled with `reason: "context_required"`.
 
+`reason` is one of `flag_not_found`, `disabled`, `enabled_no_rules`,
+`context_required`, `rollout_match`, or `rollout_miss`.
+
 Example response:
 
 ```json
 {
   "key": "new-checkout-flow",
   "enabled": true,
-  "reason": "rollout"
+  "reason": "rollout_match"
+}
+```
+
+Add `?explain=true` to include a `trace` explaining the decision. This is a
+debug aid (used by the admin UI test panel) and bypasses the evaluation cache;
+omit it for normal high-volume checks.
+
+```json
+{
+  "key": "new-checkout-flow",
+  "enabled": true,
+  "reason": "rollout_match",
+  "trace": {
+    "environment": "production",
+    "flagFound": true,
+    "flagEnabled": true,
+    "rule": "rolloutPercentage",
+    "rolloutPercentage": 25,
+    "userId": "user-123",
+    "bucket": 17
+  }
 }
 ```
 
@@ -332,6 +357,11 @@ const enabled = await forestBush.evaluate('new-checkout-flow', false, 'user-123'
 forestBush.stop();
 ```
 
+In local mode, `evaluateWithTrace(key, default, userId)` returns
+`{ enabled, reason, trace }` explaining the decision, and a `bootstrap` snapshot
+can be passed in config so the client evaluates immediately, before `start()` or
+any network request.
+
 The SDK is published to npm as `@forest-bush/sdk-js`. New versions are released
 by publishing a GitHub Release tagged `sdk-v*`, which triggers
 `.github/workflows/publish-sdk.yml`. Node (remote and local), React, and Next.js
@@ -426,7 +456,14 @@ feature-flag rows between tests, and uses an in-memory Redis adapter.
 
 - [x] Add versioned environment snapshots for fast local evaluation.
 - [x] Add SDK polling and offline fallback behavior.
-- Add bootstrap values and signed snapshots for stricter local/offline use.
-- Add evaluation traces that explain why a user received a flag value.
+- [x] Add SDK bootstrap snapshot values for instant local/offline start.
+- [x] Add evaluation traces (`?explain=true` on the API, `evaluateWithTrace` in
+  the SDK) that explain why a user received a flag value, surfaced in the admin
+  UI test panel.
+- Add signed snapshots for tamper detection (deferred until snapshots are
+  consumed in less trusted environments).
+
+### Phase 4: Selective Expansion
+
 - Add simple user-attribute targeting and reusable segments only after the core
   experience is stable.
