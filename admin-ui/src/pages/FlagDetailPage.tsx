@@ -5,6 +5,7 @@ import {
   type AuditEvent,
   type Environment,
   type EvaluationResult,
+  type EvaluationTrace,
   type FeatureFlag,
 } from '../lib/api';
 
@@ -19,6 +20,36 @@ const formatDate = (value: string) => new Intl.DateTimeFormat(undefined, {
   dateStyle: 'medium',
   timeStyle: 'short',
 }).format(new Date(value));
+
+// Turns an evaluation trace into readable lines explaining the decision.
+const describeTrace = (trace: EvaluationTrace): string[] => {
+  if (!trace.flagFound) {
+    return ['Flag not found in this environment, returning disabled.'];
+  }
+
+  const lines = [`Flag is ${trace.flagEnabled ? 'enabled' : 'disabled'}.`];
+
+  if (!trace.flagEnabled) {
+    return lines;
+  }
+
+  if (trace.rule === 'none' || trace.rolloutPercentage === null) {
+    lines.push('No rollout rule, enabled for everyone.');
+    return lines;
+  }
+
+  lines.push(`Rollout rule: ${trace.rolloutPercentage}%.`);
+
+  if (trace.userId === null || trace.bucket === null) {
+    lines.push('No userId provided, percentage rollouts need one to be sticky.');
+    return lines;
+  }
+
+  const matched = trace.bucket < trace.rolloutPercentage;
+  lines.push(`Bucket for "${trace.userId}" is ${trace.bucket}.`);
+  lines.push(`${trace.bucket} ${matched ? '<' : '>='} ${trace.rolloutPercentage} -> ${matched ? 'match' : 'miss'}.`);
+  return lines;
+};
 
 export default function FlagDetailPage({ apiKey, flag, onBack, onUpdate }: FlagDetailPageProps) {
   const [rolloutPercentage, setRolloutPercentage] = useState(flag.rules?.rolloutPercentage ?? 0);
@@ -80,7 +111,8 @@ export default function FlagDetailPage({ apiKey, flag, onBack, onUpdate }: FlagD
       const result = await apiClient.evaluateFlag(
         flag.key,
         flag.environment,
-        testUserId.trim() || undefined
+        testUserId.trim() || undefined,
+        true
       );
       setEvaluation(result);
     } catch {
@@ -188,6 +220,13 @@ export default function FlagDetailPage({ apiKey, flag, onBack, onUpdate }: FlagD
                 {evaluation.enabled ? 'Enabled' : 'Disabled'}
               </p>
               <p className="text-sm text-gray-500">Reason: {evaluation.reason}</p>
+              {evaluation.trace && (
+                <ul className="mt-3 border-t border-gray-700 pt-3 space-y-1">
+                  {describeTrace(evaluation.trace).map((line, index) => (
+                    <li key={index} className="text-sm text-gray-400">{line}</li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
         </section>

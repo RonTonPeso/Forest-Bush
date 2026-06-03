@@ -23,10 +23,21 @@ export interface AuditEvent {
   createdAt: string;
 }
 
+export interface EvaluationTrace {
+  environment: string | null;
+  flagFound: boolean;
+  flagEnabled: boolean;
+  rule: 'none' | 'rolloutPercentage';
+  rolloutPercentage: number | null;
+  userId: string | null;
+  bucket: number | null;
+}
+
 export interface EvaluationResult {
   key: string;
   enabled: boolean;
   reason: string;
+  trace?: EvaluationTrace;
 }
 
 export const ENVIRONMENTS = ['development', 'staging', 'production'] as const;
@@ -152,11 +163,15 @@ export const apiClient = {
   evaluateFlag: async (
     key: string,
     environment: Environment = DEFAULT_ENVIRONMENT,
-    userId?: string
+    userId?: string,
+    explain = false
   ): Promise<EvaluationResult> => {
     const searchParams = new URLSearchParams({ environment });
     if (userId) {
       searchParams.set('userId', userId);
+    }
+    if (explain) {
+      searchParams.set('explain', 'true');
     }
 
     const response = await fetch(`${apiClient.getApiUrl()}/flags/${key}?${searchParams.toString()}`, {
