@@ -51,33 +51,69 @@ const buildSnapshot = (flags, environment) => {
   };
 };
 
-const evaluateFlag = ({ flag, key, userId }) => {
+// Evaluation reason taxonomy. The SDK mirrors these in sdk-js/src/index.ts;
+// keep the two in sync.
+const REASONS = {
+  FLAG_NOT_FOUND: 'flag_not_found',
+  DISABLED: 'disabled',
+  ENABLED_NO_RULES: 'enabled_no_rules',
+  CONTEXT_REQUIRED: 'context_required',
+  ROLLOUT_MATCH: 'rollout_match',
+  ROLLOUT_MISS: 'rollout_miss',
+  ERROR: 'error',
+};
+
+// Stable 0-99 bucket for a flag/userId pair. Used for percentage rollouts; the
+// SDK replicates this hashing so local and remote evaluation agree.
+const rolloutBucket = (key, userId) => {
+  const hash = crypto.createHash('sha256').update(`${key}:${userId}`).digest('hex');
+  return parseInt(hash.substring(0, 8), 16) % 100;
+};
+
+// Returns { key, enabled, reason, trace }. The trace is always computed but only
+// surfaced by the handler when ?explain=true is requested.
+const evaluateFlag = ({ flag, key, userId, environment }) => {
+  const trace = {
+    environment: environment ?? null,
+    flagFound: Boolean(flag),
+    flagEnabled: Boolean(flag?.enabled),
+    rule: 'none',
+    rolloutPercentage: null,
+    userId: userId ?? null,
+    bucket: null,
+  };
+
   if (!flag) {
-    return { key, enabled: false, reason: 'not_found' };
+    return { key, enabled: false, reason: REASONS.FLAG_NOT_FOUND, trace };
   }
 
   if (!flag.enabled) {
-    return { key, enabled: false, reason: 'disabled' };
+    return { key, enabled: false, reason: REASONS.DISABLED, trace };
   }
 
-  if (!flag.rules || Object.keys(flag.rules).length === 0) {
-    return { key, enabled: true, reason: 'enabled' };
+  const rolloutPercentage = flag.rules ? flag.rules.rolloutPercentage : undefined;
+
+  if (!flag.rules || Object.keys(flag.rules).length === 0 || rolloutPercentage === undefined) {
+    return { key, enabled: true, reason: REASONS.ENABLED_NO_RULES, trace };
   }
 
-  const { rolloutPercentage } = flag.rules;
+  trace.rule = 'rolloutPercentage';
+  trace.rolloutPercentage = rolloutPercentage;
 
-  if (rolloutPercentage !== undefined) {
-    if (!userId) {
-      return { key, enabled: false, reason: 'context_required' };
-    }
-
-    const hash = crypto.createHash('sha256').update(`${key}:${userId}`).digest('hex');
-    const hashValue = parseInt(hash.substring(0, 8), 16) % 100;
-
-    return { key, enabled: hashValue < rolloutPercentage, reason: 'rollout' };
+  if (!userId) {
+    return { key, enabled: false, reason: REASONS.CONTEXT_REQUIRED, trace };
   }
 
-  return { key, enabled: true, reason: 'enabled' };
+  const bucket = rolloutBucket(key, userId);
+  trace.bucket = bucket;
+  const enabled = bucket < rolloutPercentage;
+
+  return {
+    key,
+    enabled,
+    reason: enabled ? REASONS.ROLLOUT_MATCH : REASONS.ROLLOUT_MISS,
+    trace,
+  };
 };
 
 const createApp = ({ prisma, redis, adminApiKey, logger = console } = {}) => {
@@ -131,6 +167,7 @@ const createApp = ({ prisma, redis, adminApiKey, logger = console } = {}) => {
   app.get('/flags/:key', async (req, res) => {
     const { key } = req.params;
     const userId = typeof req.query.userId === 'string' ? req.query.userId : undefined;
+    const explain = req.query.explain === 'true';
     const environmentResult = parseEnvironment(req.query.environment);
 
     if (!environmentResult.success) {
@@ -143,18 +180,22 @@ const createApp = ({ prisma, redis, adminApiKey, logger = console } = {}) => {
       const version = await getFlagVersion(redis, key, environment, logger);
       const cacheKey = `flag:${environment}:${key}:v${version}:${userId || 'anonymous'}`;
 
-      try {
-        if (!redis?.disabled && redis.status === 'ready') {
-          const cachedResult = await redis.get(cacheKey);
-          if (cachedResult) {
-            logger.log(`[cache hit] for key: ${cacheKey}`);
-            return res.status(200).json(JSON.parse(cachedResult));
+      // Explain is a low-volume admin/debug path. Bypass the cache so the hot
+      // path and its cached lean entries stay unchanged.
+      if (!explain) {
+        try {
+          if (!redis?.disabled && redis.status === 'ready') {
+            const cachedResult = await redis.get(cacheKey);
+            if (cachedResult) {
+              logger.log(`[cache hit] for key: ${cacheKey}`);
+              return res.status(200).json(JSON.parse(cachedResult));
+            }
           }
+        } catch (cacheError) {
+          logger.warn(`cache read failed for ${cacheKey}:`, cacheError.message);
         }
-      } catch (cacheError) {
-        logger.warn(`cache read failed for ${cacheKey}:`, cacheError.message);
+        logger.log(`[cache miss] for key: ${cacheKey}`);
       }
-      logger.log(`[cache miss] for key: ${cacheKey}`);
 
       const flag = await prisma.featureFlag.findUnique({
         where: {
@@ -165,17 +206,19 @@ const createApp = ({ prisma, redis, adminApiKey, logger = console } = {}) => {
         },
       });
 
-      const result = evaluateFlag({ flag, key, userId });
+      const { trace, ...result } = evaluateFlag({ flag, key, userId, environment });
 
-      try {
-        if (!redis?.disabled && redis.status === 'ready') {
-          await redis.set(cacheKey, JSON.stringify(result), 'EX', 60);
+      if (!explain) {
+        try {
+          if (!redis?.disabled && redis.status === 'ready') {
+            await redis.set(cacheKey, JSON.stringify(result), 'EX', 60);
+          }
+        } catch (cacheError) {
+          logger.warn(`cache write failed for ${cacheKey}:`, cacheError.message);
         }
-      } catch (cacheError) {
-        logger.warn(`cache write failed for ${cacheKey}:`, cacheError.message);
       }
 
-      return res.status(200).json(result);
+      return res.status(200).json(explain ? { ...result, trace } : result);
     } catch (error) {
       logger.error(`error evaluating flag '${key}':`, error);
       return res.status(200).json({ key, enabled: false, reason: 'error' });
@@ -231,4 +274,4 @@ const createApp = ({ prisma, redis, adminApiKey, logger = console } = {}) => {
   return app;
 };
 
-module.exports = { createApp, evaluateFlag, getFlagVersion, buildSnapshot };
+module.exports = { createApp, evaluateFlag, getFlagVersion, buildSnapshot, REASONS };

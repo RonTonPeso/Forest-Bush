@@ -68,7 +68,7 @@ describe('flag evaluation', () => {
     expect(response.body).toEqual({
       key: 'missing-flag',
       enabled: false,
-      reason: 'not_found',
+      reason: 'flag_not_found',
     });
   });
 
@@ -104,7 +104,7 @@ describe('flag evaluation', () => {
     expect(response.body).toEqual({
       key: 'plain-enabled',
       enabled: true,
-      reason: 'enabled',
+      reason: 'enabled_no_rules',
     });
   });
 
@@ -130,12 +130,12 @@ describe('flag evaluation', () => {
     expect(zero.body).toEqual({
       key: 'rollout-zero',
       enabled: false,
-      reason: 'rollout',
+      reason: 'rollout_miss',
     });
     expect(hundred.body).toEqual({
       key: 'rollout-hundred',
       enabled: true,
-      reason: 'rollout',
+      reason: 'rollout_match',
     });
   });
 
@@ -152,7 +152,7 @@ describe('flag evaluation', () => {
     const second = await request(app).get('/flags/rollout-half?userId=user-123').expect(200);
 
     expect(second.body).toEqual(first.body);
-    expect(first.body.reason).toBe('rollout');
+    expect(['rollout_match', 'rollout_miss']).toContain(first.body.reason);
   });
 
   it('requires userId for percentage rollout', async () => {
@@ -202,7 +202,7 @@ describe('flag evaluation', () => {
     expect(staging.body).toEqual({
       key: 'environmental-flag',
       enabled: true,
-      reason: 'enabled',
+      reason: 'enabled_no_rules',
     });
   });
 
@@ -273,12 +273,79 @@ describe('flag evaluation', () => {
     expect(production.body).toEqual({
       key: 'cached-by-environment',
       enabled: true,
-      reason: 'enabled',
+      reason: 'enabled_no_rules',
     });
     expect(staging.body).toEqual({
       key: 'cached-by-environment',
       enabled: false,
       reason: 'disabled',
+    });
+  });
+
+  it('omits the trace unless explain is requested', async () => {
+    await prisma.featureFlag.create({
+      data: { key: 'lean-flag', enabled: true, rules: {} },
+    });
+
+    const response = await request(app).get('/flags/lean-flag').expect(200);
+
+    expect(response.body).toEqual({
+      key: 'lean-flag',
+      enabled: true,
+      reason: 'enabled_no_rules',
+    });
+    expect(response.body.trace).toBeUndefined();
+  });
+
+  it('returns a trace for a rollout match when explain=true', async () => {
+    await prisma.featureFlag.create({
+      data: { key: 'explained-rollout', enabled: true, rules: { rolloutPercentage: 100 } },
+    });
+
+    const response = await request(app)
+      .get('/flags/explained-rollout?environment=production&userId=user-1&explain=true')
+      .expect(200);
+
+    expect(response.body.enabled).toBe(true);
+    expect(response.body.reason).toBe('rollout_match');
+    expect(response.body.trace).toMatchObject({
+      environment: 'production',
+      flagFound: true,
+      flagEnabled: true,
+      rule: 'rolloutPercentage',
+      rolloutPercentage: 100,
+      userId: 'user-1',
+    });
+    expect(response.body.trace.bucket).toBeGreaterThanOrEqual(0);
+    expect(response.body.trace.bucket).toBeLessThan(100);
+  });
+
+  it('explains a context_required result for an anonymous rollout', async () => {
+    await prisma.featureFlag.create({
+      data: { key: 'explained-context', enabled: true, rules: { rolloutPercentage: 50 } },
+    });
+
+    const response = await request(app)
+      .get('/flags/explained-context?explain=true')
+      .expect(200);
+
+    expect(response.body.reason).toBe('context_required');
+    expect(response.body.trace).toMatchObject({
+      rule: 'rolloutPercentage',
+      rolloutPercentage: 50,
+      userId: null,
+      bucket: null,
+    });
+  });
+
+  it('explains a missing flag when explain=true', async () => {
+    const response = await request(app).get('/flags/ghost-flag?explain=true').expect(200);
+
+    expect(response.body.reason).toBe('flag_not_found');
+    expect(response.body.trace).toMatchObject({
+      flagFound: false,
+      rule: 'none',
+      bucket: null,
     });
   });
 });
@@ -567,7 +634,7 @@ describe('redis disabled mode', () => {
     expect(response.body).toEqual({
       key: 'no-redis',
       enabled: true,
-      reason: 'enabled',
+      reason: 'enabled_no_rules',
     });
   });
 });
