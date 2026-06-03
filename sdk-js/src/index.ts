@@ -25,6 +25,12 @@ export interface ForestBushClientConfig {
    * Defaults to 30.
    */
   pollIntervalSeconds?: number;
+  /**
+   * An initial snapshot for 'local' mode. When provided, the client can
+   * evaluate flags immediately, before start() or any network request. A
+   * background refresh still runs once start() is called.
+   */
+  bootstrap?: Snapshot;
 }
 
 interface EvaluationResponse {
@@ -38,18 +44,50 @@ interface CacheEntry {
   expiry: number;
 }
 
-interface SnapshotFlag {
+export interface SnapshotFlag {
   key: string;
   enabled: boolean;
   rules: { rolloutPercentage?: number } | null;
 }
 
-interface Snapshot {
+export interface Snapshot {
   environment: string;
   version: string;
   generatedAt: string;
   checksum: string;
   flags: SnapshotFlag[];
+}
+
+/**
+ * Why an evaluation produced its value. Mirrors the server's reason taxonomy in
+ * api/src/app.js, plus 'fallback' for when the SDK returns the caller's default
+ * (no snapshot loaded yet, or the flag is absent from the snapshot).
+ */
+export type EvaluationReason =
+  | 'flag_not_found'
+  | 'disabled'
+  | 'enabled_no_rules'
+  | 'context_required'
+  | 'rollout_match'
+  | 'rollout_miss'
+  | 'fallback';
+
+export interface EvaluationTrace {
+  environment: string;
+  flagFound: boolean;
+  flagEnabled: boolean;
+  rule: 'none' | 'rolloutPercentage';
+  rolloutPercentage: number | null;
+  userId: string | null;
+  bucket: number | null;
+  /** True when serving a snapshot whose last refresh failed. */
+  stale: boolean;
+}
+
+export interface TracedEvaluation {
+  enabled: boolean;
+  reason: EvaluationReason;
+  trace: EvaluationTrace;
 }
 
 // Maps a flag key + userId to a stable bucket in [0, 100).
@@ -76,6 +114,7 @@ export class ForestBushClient {
   private snapshotFlags: Map<string, SnapshotFlag> = new Map();
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private loadingPromise: Promise<void> | null = null;
+  private stale = false;
 
   constructor(config: ForestBushClientConfig) {
     if (!config.host) {
@@ -88,6 +127,12 @@ export class ForestBushClient {
       pollIntervalSeconds: 30,
       ...config,
     };
+
+    // Seed from a bootstrap snapshot so local evaluation works before any
+    // network request.
+    if (config.bootstrap) {
+      this.setSnapshot(config.bootstrap);
+    }
   }
 
   /**
@@ -138,8 +183,8 @@ export class ForestBushClient {
   ): Promise<boolean> {
     if (this.config.mode === 'local') {
       // Load lazily if start() was never called, so the client still works.
-      await this.ensureSnapshot();
-      return this.evaluateFromSnapshot(key, defaultValue, userId);
+      const { enabled } = await this.evaluateWithTrace(key, defaultValue, userId);
+      return enabled;
     }
 
     const cacheKey = `${environment}:${key}:${userId || ''}`;
@@ -202,8 +247,15 @@ export class ForestBushClient {
     await this.loadingPromise;
   }
 
-  // Fetches the latest snapshot. On failure it keeps the last good snapshot
-  // (offline fallback) rather than throwing.
+  // Stores a snapshot and rebuilds the by-key lookup. Marks the data fresh.
+  private setSnapshot(snapshot: Snapshot): void {
+    this.snapshot = snapshot;
+    this.snapshotFlags = new Map(snapshot.flags.map((flag) => [flag.key, flag]));
+    this.stale = false;
+  }
+
+  // Fetches the latest snapshot. On failure it keeps the last good snapshot and
+  // marks it stale (offline fallback) rather than throwing.
   private async refreshSnapshot(): Promise<void> {
     const environment = this.config.environment || 'production';
     const url = new URL(`/environments/${environment}/snapshot`, this.config.host);
@@ -212,48 +264,73 @@ export class ForestBushClient {
       const response = await fetch(url.toString());
       if (!response.ok) {
         console.error(`Forest Bush SDK: snapshot request failed with status ${response.status}.`);
+        if (this.snapshot) this.stale = true;
         return;
       }
 
-      const next = (await response.json()) as Snapshot;
-      this.snapshot = next;
-      this.snapshotFlags = new Map(next.flags.map((flag) => [flag.key, flag]));
+      this.setSnapshot((await response.json()) as Snapshot);
     } catch (error) {
       console.error('Forest Bush SDK: failed to refresh snapshot, keeping last known values.', error);
+      if (this.snapshot) this.stale = true;
     }
   }
 
-  // Local evaluation mirroring api/src/app.js#evaluateFlag. Unknown flags and a
-  // never-loaded snapshot fall back to the caller's defaultValue.
-  private async evaluateFromSnapshot(key: string, defaultValue: boolean, userId?: string): Promise<boolean> {
-    if (!this.snapshot) {
-      return defaultValue;
-    }
+  /**
+   * Like evaluate(), but returns the value plus a trace explaining the decision
+   * (local mode only). Falls back to defaultValue with reason 'fallback' when no
+   * snapshot is loaded or the flag is absent from the snapshot.
+   */
+  public async evaluateWithTrace(
+    key: string,
+    defaultValue: boolean,
+    userId?: string
+  ): Promise<TracedEvaluation> {
+    await this.ensureSnapshot();
+    return this.evaluateLocal(key, defaultValue, userId);
+  }
 
-    const flag = this.snapshotFlags.get(key);
+  // Local evaluation mirroring api/src/app.js#evaluateFlag, with the same reason
+  // taxonomy and bucket hashing. Unknown flags and a never-loaded snapshot fall
+  // back to the caller's defaultValue with reason 'fallback'.
+  private async evaluateLocal(key: string, defaultValue: boolean, userId?: string): Promise<TracedEvaluation> {
+    const flag = this.snapshot ? this.snapshotFlags.get(key) : undefined;
+
+    const trace: EvaluationTrace = {
+      environment: this.config.environment || 'production',
+      flagFound: Boolean(flag),
+      flagEnabled: Boolean(flag?.enabled),
+      rule: 'none',
+      rolloutPercentage: null,
+      userId: userId ?? null,
+      bucket: null,
+      stale: this.stale,
+    };
+
     if (!flag) {
-      return defaultValue;
+      return { enabled: defaultValue, reason: 'fallback', trace };
     }
 
     if (!flag.enabled) {
-      return false;
+      return { enabled: false, reason: 'disabled', trace };
     }
 
-    const rules = flag.rules;
-    if (!rules || Object.keys(rules).length === 0) {
-      return true;
+    const rolloutPercentage = flag.rules ? flag.rules.rolloutPercentage : undefined;
+    if (!flag.rules || Object.keys(flag.rules).length === 0 || rolloutPercentage === undefined) {
+      return { enabled: true, reason: 'enabled_no_rules', trace };
     }
 
-    const { rolloutPercentage } = rules;
-    if (rolloutPercentage !== undefined) {
-      if (!userId) {
-        // Matches the server: percentage rollouts need a userId to be sticky.
-        return false;
-      }
-      const bucket = await hashToBucket(key, userId);
-      return bucket < rolloutPercentage;
+    trace.rule = 'rolloutPercentage';
+    trace.rolloutPercentage = rolloutPercentage;
+
+    if (!userId) {
+      // Matches the server: percentage rollouts need a userId to be sticky.
+      return { enabled: false, reason: 'context_required', trace };
     }
 
-    return true;
+    const bucket = await hashToBucket(key, userId);
+    trace.bucket = bucket;
+    const enabled = bucket < rolloutPercentage;
+
+    return { enabled, reason: enabled ? 'rollout_match' : 'rollout_miss', trace };
   }
 }

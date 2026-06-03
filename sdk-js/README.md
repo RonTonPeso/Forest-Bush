@@ -70,6 +70,39 @@ Local evaluation uses the same percentage-rollout hashing as the server, so a
 given `userId` lands in the same bucket either way. Calling `evaluate` before
 `start()` triggers a one-time lazy snapshot load.
 
+Pass a `bootstrap` snapshot to evaluate immediately, before any network request
+(useful for tests or for shipping a known-good snapshot with your build):
+
+```typescript
+const forestBush = new ForestBushClient({
+  host: 'https://forest-bush.fly.dev',
+  mode: 'local',
+  bootstrap: mySnapshot, // a Snapshot object, e.g. fetched at build time
+});
+
+// works right away, no start() or network needed
+const isEnabled = await forestBush.evaluate('new-cool-feature', false, 'user-123');
+```
+
+### Explaining a decision
+
+`evaluateWithTrace` returns the value plus a trace explaining it (local mode):
+
+```typescript
+const { enabled, reason, trace } = await forestBush.evaluateWithTrace(
+  'new-cool-feature',
+  false,
+  'user-123'
+);
+// reason: 'rollout_match' | 'rollout_miss' | 'disabled' | 'enabled_no_rules'
+//       | 'context_required' | 'fallback'
+// trace.bucket, trace.rolloutPercentage, trace.stale, ...
+```
+
+`trace.stale` is `true` when the client is serving a snapshot whose last refresh
+failed. `reason` is `fallback` when the default value is used (no snapshot loaded
+yet, or the flag is absent from the snapshot).
+
 ## API Reference
 
 ### `new ForestBushClient(config)`
@@ -82,11 +115,17 @@ Creates a new client instance.
     -   `cacheTTL` (number, optional): In-memory cache TTL in seconds for remote mode. Defaults to `0` (disabled).
     -   `mode` (`remote` | `local`, optional): Evaluation mode. Defaults to `remote`.
     -   `pollIntervalSeconds` (number, optional): Snapshot refresh interval in local mode. Defaults to `30`.
+    -   `bootstrap` (`Snapshot`, optional): An initial snapshot for local mode so the client can evaluate before `start()` or any network request.
 
 ### `client.start()` / `client.stop()`
 
 Starts and stops background snapshot polling in `local` mode. No-ops in
 `remote` mode.
+
+### `client.evaluateWithTrace(key, defaultValue, userId)`
+
+Local mode only. Like `evaluate`, but resolves to `{ enabled, reason, trace }`
+explaining the decision. See "Explaining a decision" above.
 
 ### `client.evaluate(key, defaultValue, userId, environment)`
 

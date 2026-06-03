@@ -15,4 +15,8 @@ await forestBush.start();
 const enabled = await forestBush.evaluate('new-checkout-flow', false, 'user-123');
 console.log(`new-checkout-flow enabled: ${enabled}`);
 
+// evaluateWithTrace explains the decision (reason + trace).
+const { reason, trace } = await forestBush.evaluateWithTrace('new-checkout-flow', false, 'user-123');
+console.log(`reason: ${reason}, bucket: ${trace.bucket}, stale: ${trace.stale}`);
+
 forestBush.stop();
